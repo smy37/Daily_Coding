@@ -24,13 +24,13 @@ def find_best(num_list):
         temp_cri = max(building_list[i][0], building_list[i][1])
         if temp_cri*i > final:
             final = temp_cri*i
+    del building_list
     return final
 
 if __name__ == "__main__":
     temp = list(map(int, sys.stdin.readline().split(' ')))
-
     while temp[0] != 0:
-
         print(find_best(temp))
+        del temp
         temp = list(map(int, sys.stdin.readline().split(' ')))
 
