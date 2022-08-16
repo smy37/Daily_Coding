@@ -42,7 +42,10 @@ def solution(Directories, Cmd):
                     folder_list.append(t_cur)
 
     answer = cur
-
-    return answer
+    for i in folder_list:
+        print(i)
+    return answer, folder_list
 
 print(solution([r"C:\root\folder1", r"C:\root\folder2\file1.txt", r"C:\root\folder2\file2.txt"], [['mkdir', r'C:\root\folder3'],['CD', r"C:\root\folder3"]]))
+
+

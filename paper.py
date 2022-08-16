@@ -1,7 +1,17 @@
-import matplotlib.pyplot as plt
+import math
+import numpy as np
+cri = [1.55440E-06,  -6.82841E-04,   1.51091E-05]
+node1 = [-6.43004E-07,  -1.00172E-03,   1.49381E-04]
 
-x = [i for i in range(100)]
-y = [i for i in range(100, 200)]
+te_sum = 0
+for i in range(len(cri)):
+    te_sum += (cri[i]-node1[i])**2
+    print(cri[i]-node1[i])
 
-plt.plot(x , y)
-plt.show()
+print(math.sqrt(te_sum))
+
+tt = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+tg = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+tf = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+print(len(tf))
