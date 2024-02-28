@@ -1,51 +1,33 @@
-def solution(Directories, Cmd):
-    cur = Directories[0]
-    folder_list = []
-    cri = Directories[0].strip().split('\\')[0]
-    for i in Directories:
-        if '.' in i:
-            temp = i.strip().split('\\')[:-1]
-            tt = ''
-            for j in range(len(temp)):
-                if j ==0:
-                    tt = temp[j]
-                else:
-                    tt = tt + '\\' + temp[j]
-            if tt not in folder_list:
-                folder_list.append(tt)
-        else:
-            folder_list.append(i)
-    print(folder_list)
-    for i in Cmd:
+import sys
+import re
+from itertools import combinations
 
-        if i[0] == 'CD':
+N, K = map(int, sys.stdin.readline().split())
 
-            if i[1] in folder_list:
+ord_set = []
+if K < 5:
+    print(0)
+else:
+    word_masks = []
+    for _ in range(N):
+        word = sys.stdin.readline().strip()
+        mask = 0
+        for char in set(word) - {'a', 'n', 't', 'i', 'c'}:
+            mask |= (1 << (ord(char) - ord('a')))
+            ord_set.append(ord(char) - ord('a'))
+        word_masks.append(mask)
 
-                cur = i[1]
+    answer = 0
+    ord_set = set(ord_set)
+    if K-5 >= len(ord_set):
+        answer = N
+    else:
+        for comb in combinations(ord_set, K-5):
+            comb_mask = 0
+            for i in comb:
+                comb_mask |= (1 << i)
+            temp_ans = sum(1 for word_mask in word_masks if word_mask & comb_mask == word_mask)
+            answer = max(answer, temp_ans)
 
-            else:
-
-                if cur+f'\{i[1]}' in folder_list:
-                    cur = cur+f'\{i[1]}'
-
-                else:
-
-                    continue
-        elif i[0] == "mkdir":
-            if cri in i[1]:
-                if i[1] not in folder_list:
-                    folder_list.append(i[1])
-            else:
-                t_cur = cur + '\\' + i[1]
-                if t_cur not in folder_list:
-                    folder_list.append(t_cur)
-
-    answer = cur
-    for i in folder_list:
-        print(i)
-    return answer, folder_list
-
-print(solution([r"C:\root\folder1", r"C:\root\folder2\file1.txt", r"C:\root\folder2\file2.txt"], [['mkdir', r'C:\root\folder3'],['CD', r"C:\root\folder3"]]))
-
+    print(answer)
 

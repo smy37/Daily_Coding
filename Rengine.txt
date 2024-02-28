@@ -1,0 +1,2901 @@
+// ReactionEngine.cpp: implementation of the CReactionEngine class.
+//
+//////////////////////////////////////////////////////////////////////
+
+#include "stdafx.h"
+#include "wg_gps.h"
+#include "ReactionEngine.h"
+#include "I_GPSModel.h"
+#include "DeformEngine.h"
+#include "GPS_DTTYPE.h"
+#include "GPSInflGridBase.h"
+#include "GPostTextOut.h"
+
+#include "..\wg_db\wg_db_AttrCtrl.h"
+#include "..\wg_db\wg_db_PostCtrl.h"
+#include "..\wg_db\wg_db_MathFunc.h"
+#include "..\wg_base\GTF.h"
+#include <float.h>
+
+//#include "MVL_ReacEng.h"
+
+#ifdef _DEBUG
+#undef THIS_FILE
+static char THIS_FILE[]=__FILE__;
+#define new DEBUG_NEW
+#endif
+
+/////////////////////////////////////////////////////////////////////
+/*
+extern _T("C") { void __cdecl MOV_KRNL(char* filename, int fn_len, int type, int number, int component,
+																	 int loadcase, int* N_lane, double* F_max, double* F_min, 
+																	 int max_lane_array[1000], int min_lane_array[1000],int nProgType,
+																	 double scfc_lane_array[20],double turuck_load_dist[20000]); }
+extern _T("C") { void __cdecl MOV_KRNL_JAPAN(char* filename, int fn_len, int type, int number, int component,
+																	 int loadcase, int* N_lane, double* F_max, double* F_min, 
+																	 int max_load[100], int min_load[100],int nProgType); }
+extern _T("C") { void __cdecl MOV_KRNL_CHINA(char* filename, int fn_len, int type, int number, int component,
+																	 int loadcase, int* N_lane, double* F_max, double* F_min, 
+																	 int max_lane_array[1000], int min_lane_array[1000],int nProgType,
+																	 double *dimpact,double *simpact,double *scfc_lane_array,
+																	 int nm_pmx1,int nm_smx1); }
+																	 */
+
+#define DECLARE_GPSMD()  I_GPSModel *gm=(I_GPSModel *)m_pGPSModel
+#define DECLARE_DBDOC()  CDBDoc		  *pDoc=((I_GPSModel *)m_pGPSModel)->GetDBDoc()
+#define DECLARE_DPTDR()  T_GPS_DISP_OPT_DR *pDR = &(gm->m_DOPT.DR) 
+#define DECLARE_DPTRD()  T_GPS_DISP_OPT_RD *pRD = &(gm->m_DOPT.RD)
+#define DECLARE_DPTCL()  T_GPS_DISP_OPT_CL *pCL = &(gm->m_DOPT.CL)
+#define DECLARE_DPTTX()  T_GPS_DISP_OPT_TX *pTX = &(gm->m_DOPT.TX)
+
+/////////////////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////////////////
+// Construction/Destruction
+//////////////////////////////////////////////////////////////////////
+
+//#define GPS_MVL_TEST
+
+CReactionEngine::CReactionEngine(I_GPSModelBase *pGM)
+{
+	CEngineBase::CEngineBase();
+
+	m_pGPSModel				= pGM;
+	m_mapSkew.InitHashTable(HASHSIZENODE);
+
+	ResetEngine();
+	//m_nPrdMoving=CProduct::GetMovingType(); 
+
+	m_bInitEngine_All_First = FALSE;
+}
+
+CReactionEngine::~CReactionEngine()
+{
+	
+}
+
+/*
+void CReactionEngine::ImportEngine(CReactionEngine *eg)
+{
+	if(!eg)return;
+
+	if(eg->m_pContourEngine) 
+	{
+		if(!m_pContourEngine)m_pContourEngine=new CContourEngine();
+		*m_pContourEngine = *(eg->m_pContourEngine);
+	}
+
+#ifdef GPS_MVL_TEST
+	if(eg->m_pMvlEng)
+	{
+		if(!m_pMvlEng)m_pMvlEng=new CMVL_ReacEng();
+		*((CMVL_ReacEng *)m_pMvlEng)=*((CMVL_ReacEng *)(eg->m_pMvlEng));  
+	}
+#endif
+
+	if(!m_pGPSModel && eg->m_pGPSModel)m_pGPSModel=eg->m_pGPSModel;
+
+	m_ReacScaleFactor	= eg->m_ReacScaleFactor;
+	m_bReacDataSet		= eg->m_bReacDataSet;
+	m_ReacComponent		= eg->m_ReacComponent;
+	m_KeyPickedNode		= eg->m_KeyPickedNode;
+	m_InflKeyNode		  = eg->m_InflKeyNode;
+	m_KeyMaxReac		  = eg->m_KeyMaxReac;
+	m_KeyMinReac		  = eg->m_KeyMinReac;
+	m_MaxReacVal		  = eg->m_MaxReacVal;
+	m_MinReacVal		  = eg->m_MinReacVal;
+	m_dMaxValue       = eg->m_dMaxValue;
+	m_dMinValue       = eg->m_dMinValue;
+	m_MaxAxis			    = eg->m_MaxAxis;
+	m_MinAxis			    = eg->m_MinAxis;
+	m_bLocalValue     = eg->m_bLocalValue;
+	
+	POSITION pos; T_NODE_K key; T_SKEW_D skew_data;
+	pos = eg->m_mapSkew.GetStartPosition();
+	while(pos)
+	{
+		eg->m_mapSkew.GetNextAssoc(pos,key,skew_data);
+		m_mapSkew.SetAt(key,skew_data);
+	}
+
+	m_arLaneInfoNew.RemoveAll();
+	for(int i=0; i<eg->m_arLaneInfoNew.GetSize(); i++)
+		m_arLaneInfoNew.Add(eg->m_arLaneInfoNew[i]);
+
+	m_MaxInflEKey		= eg->m_MaxInflEKey;
+	m_MinInflEKey		= eg->m_MinInflEKey;
+	m_MaxInflPart		= eg->m_MaxInflPart;
+	m_MinInflPart		= eg->m_MinInflPart;
+
+	m_PickedNodeList.RemoveAll();
+	m_PickedNodeList.Copy(eg->m_PickedNodeList);
+
+	m_ReacAdjustFactor	= eg->m_ReacAdjustFactor;
+	m_bLockAdjFactor		= eg->m_bLockAdjFactor;
+
+	m_NodeKeyList.RemoveAll();
+	m_ReacReverseFg.RemoveAll();  //KYE-HONG-20020204
+	m_NodeKeyList.Copy(eg->m_NodeKeyList);
+	m_ReacReverseFg.Copy(eg->m_ReacReverseFg);  //KYE-HONG-20020204
+	m_InflLaneElemKeyList.RemoveAll();
+	m_InflLaneElemKeyList.Copy(eg->m_InflLaneElemKeyList);
+	m_ReacDataList.RemoveAll();
+	m_ReacDataList.Copy(eg->m_ReacDataList);
+	m_EccenList.RemoveAll();
+	m_EccenList.Copy(eg->m_EccenList);
+	
+	for(i=0; i<3; i++)
+	{
+		m_arInflReacEccen[i].RemoveAll();
+		m_arInflReacEccen[i].Copy(eg->m_arInflReacEccen[i]);
+	}
+
+	m_InflDistList.RemoveAll();
+	m_InflDistList.Copy(eg->m_InflDistList);
+
+	// Moving Load Tracer
+	m_arMvlTrcData.RemoveAll();
+	m_arLaneKey.RemoveAll();
+	for(i=0; i<eg->m_arMvlTrcData.GetSize(); i++)
+		m_arMvlTrcData.Add(eg->m_arMvlTrcData[i]);
+	m_arLaneKey.Copy(eg->m_arLaneKey);
+	m_dMVLTRCScaleFactor = eg->m_dMVLTRCScaleFactor;
+	m_bDrawMVLTRCLoad = eg->m_bDrawMVLTRCLoad;
+	m_bMVLTRCValue = eg->m_bMVLTRCValue;
+	m_dMaxModelLength = eg->m_dMaxModelLength;
+	
+	//KYE-HONG-ADD
+	m_arImpFct.RemoveAll();
+	m_arImpFct.Copy(eg->m_arImpFct); 
+	m_bMvlTrcCF = eg->m_bMvlTrcCF;    //  원심력하중고려여부 
+	m_dMvlTrcCF = eg->m_dMvlTrcCF;    //  원심력하중의 ratio
+	m_dMvlTrcCF_H = eg->m_dMvlTrcCF_H;//  원심력하중의 작용높이 
+
+	m_bReacInflIclImpFct  = eg->m_bReacInflIclImpFct;
+}
+*/
+void CReactionEngine::ImportEngine(CEngineBase *egbase)
+{
+		if(!egbase)return;
+
+		CEngineBase::ImportEngine(egbase); 
+
+		CReactionEngine* eg = (CReactionEngine*)egbase;
+
+		m_ReacScaleFactor	= eg->m_ReacScaleFactor;
+		m_bReacDataSet		= eg->m_bReacDataSet;
+		m_ReacComponent		= eg->m_ReacComponent;
+		m_KeyPickedNode		= eg->m_KeyPickedNode;
+		m_KeyMaxReac		  = eg->m_KeyMaxReac;
+		m_KeyMinReac		  = eg->m_KeyMinReac;
+		m_MaxReacVal		  = eg->m_MaxReacVal;
+		m_MinReacVal		  = eg->m_MinReacVal;
+		m_MaxAxis			    = eg->m_MaxAxis;
+		m_MinAxis			    = eg->m_MinAxis;
+		m_bLocalValue     = eg->m_bLocalValue;
+
+		POSITION pos; T_NODE_K key; T_SKEW_D skew_data;
+		pos = eg->m_mapSkew.GetStartPosition();
+		while(pos)
+		{
+				eg->m_mapSkew.GetNextAssoc(pos,key,skew_data);
+				m_mapSkew.SetAt(key,skew_data);
+		}
+
+		m_PickedNodeList.RemoveAll();
+		m_PickedNodeList.Copy(eg->m_PickedNodeList);
+		m_ReacAdjustFactor	= eg->m_ReacAdjustFactor;
+
+		m_NodeKeyList.RemoveAll();
+		m_ReacReverseFg.RemoveAll();  //KYE-HONG-20020204
+		m_NodeKeyList.Copy(eg->m_NodeKeyList);
+		m_ReacReverseFg.Copy(eg->m_ReacReverseFg);  //KYE-HONG-20020204
+		m_ReacDataList.RemoveAll();
+		m_ReacDataList.Copy(eg->m_ReacDataList);
+
+		for(int i=0; i<3; i++)
+		{
+				m_arInflReacEccen[i].RemoveAll();
+				m_arInflReacEccen[i].Copy(eg->m_arInflReacEccen[i]);
+		}
+		m_bReacInflIclImpFct  = eg->m_bReacInflIclImpFct;
+}
+
+void CReactionEngine::InitEngine(CDeformEngine *pDE,int nGPSInstruction )
+{
+	I_GPSModel		*gm=(I_GPSModel *) m_pGPSModel;
+
+	if(gm->m_LoadCaseType == D_LOADCASE_PUSHOVER && !m_pDoc->m_pPostCtrl->IsPushOverResultEnable())
+	{
+		//AfxMessageBox(_LS(IDS_WG_GPS_PUSHOVER_RESULT_UNAVAILABLE));
+		return;
+	}
+
+	m_bReacDataSet = FALSE;
+	m_mapSkew.RemoveAll();
+
+//	if (((CGPSView *) gm->m_pMyView)->m_pRenderView)
+//		return;
+
+	gm->SelectLoad();
+
+	int nGPSMode = (nGPSInstruction != -1)? nGPSInstruction:gm->m_GPSMode;
+	switch (nGPSMode) 
+	{
+	case GPS_COMMAND_IFLREAC:
+		MakeInflReacDataList();
+		break;
+	case GPS_COMMAND_IFSREAC:
+		MakeInflReacDataListS(pDE);
+		break;
+	case GPS_COMMAND_MVLTRCREAC:
+		if(CDBDoc::GetDocPoint()->m_pPostCtrl->GetInflType() == D_INFLTYPE_LINE)
+		{
+			MakeMvlTrcReacDataList_New2(); 
+			MakeAvgMvlTrcInflValue();
+		}
+		else  
+		{
+			MakeMvlTrcReacDataListS(pDE);
+		}
+	  break;
+
+	case GPS_COMMAND_GRIDTRC_REAC:
+		RemoveInflGrid();
+		m_pInflGrid = CGPSInflGridBase::CreateInflGrid(D_INFL_GRID_REAC,this);
+		if(m_pInflGrid) m_pInflGrid->MakeInfl();
+		else            ASSERT(0);
+		MakeJPGridReacDataList(m_pInflGrid);
+		break;
+
+	case GPS_COMMAND_IFGREAC:
+		RemoveInflGrid();
+		m_pInflGrid = CGPSInflGridBase::CreateInflGrid(D_INFL_GRID_REAC,this);
+		if(m_pInflGrid) m_pInflGrid->MakeInfl();
+		else            ASSERT(0);
+		break; 
+	case GPS_COMMAND_SOIL_PRESSURE:
+		MakeReacDataList4SoilPressure(); // soil Pressure는 Boundary Change Assignment에 따라 값을 받아가야 하므로 다른게 처리[MQC 15923]
+		break; 
+	default:
+	  MakeReacDataList();
+		break;
+	}
+	switch(nGPSMode) 
+	{
+	case GPS_COMMAND_IFLREAC:
+	case GPS_COMMAND_IFSREAC:
+	case GPS_COMMAND_MVLTRCREAC:
+	case GPS_COMMAND_IFGREAC:
+	case GPS_COMMAND_GRIDTRC_REAC:
+		gm->m_nLgdMaxValKey=0;
+		gm->m_nLgdMinValKey=0;
+		break; 
+	}
+}
+
+void CReactionEngine::MakeReacDataList4SoilPressure()
+{
+	I_GPSModel	*gm=(I_GPSModel *) m_pGPSModel;
+	
+	int			i,j,node_num;
+	double	max_reac=-DBL_MAX, min_reac=DBL_MAX,len, val[3];
+	BOOL		has_content=FALSE;
+
+	T_NODE_K	node_key;
+	T_REAC_D	reac_d;
+	
+	m_dMaxValue = -DBL_MAX;
+	m_dMinValue = DBL_MAX;
+
+	if(!gm->m_bLoadDataSet)return;
+	gm->m_pMyView->BeginWaitCursor();
+
+	m_KeyMaxReac = 0;
+	m_KeyMinReac = 0;
+	m_MaxReacVal = -DBL_MAX;
+	m_MinReacVal = DBL_MAX;
+
+	switch (m_ReacComponent) 
+	{
+	case REACTION_COMPONENT_FX:
+	case REACTION_COMPONENT_MX:
+	case REACTION_COMPONENT_W:
+	  m_MaxAxis = m_MinAxis = 0;
+		break;
+	case REACTION_COMPONENT_FY:
+	case REACTION_COMPONENT_MY:
+	  m_MaxAxis = m_MinAxis = 1;
+		break;
+	case REACTION_COMPONENT_FZ:
+	case REACTION_COMPONENT_MZ:
+	  m_MaxAxis = m_MinAxis = 2;
+		break;
+	}
+
+	m_NodeKeyList.RemoveAll();
+	m_ReacReverseFg.RemoveAll();  //KYE-HONG-20020204
+	m_ReacDataList.RemoveAll();
+	node_num = gm->m_NKeyListActive.GetSize();
+	for(i=0;i<node_num;i++) 
+	{
+		node_key = gm->m_NKeyListActive[i];
+		CArray<T_NSPR_K, T_NSPR_K> aNsprK;
+		CArray<T_NSPR_D, T_NSPR_D&> aNsprD;
+		m_pDoc->m_pAttrCtrl->GetNsprNode(node_key, aNsprK, aNsprD);
+
+		int nNsprSize = aNsprD.GetSize();
+		CMapEx<T_BNGR_K, T_BNGR_K, BOOL, BOOL> mNsprBndrK; mNsprBndrK.RemoveAll();
+		if(nNsprSize > 0)
+		{
+			mNsprBndrK.InitHashTable(GF_GetHashSizeByCount(nNsprSize));
+			for (int j=0; j<nNsprSize; j++) mNsprBndrK.SetAt(aNsprD[j].GroupKey, TRUE);
+
+			switch(gm->m_LoadMinMaxType) 
+			{
+			case LOADTYPE_NORMAL:
+			case LOADTYPE_MAX:
+				if(!GetReacNew4SoilPressure(node_key, &reac_d, NULL,NULL, &mNsprBndrK))continue;
+				break;
+			case LOADTYPE_MIN:
+				if(!GetReacNew4SoilPressure(node_key, NULL,&reac_d,NULL, &mNsprBndrK))continue;
+				break;
+			case LOADTYPE_ALL:// absmax
+				if(!GetReacNew4SoilPressure(node_key, NULL,NULL,&reac_d, &mNsprBndrK))continue;
+				break;
+			}
+		}
+		else 
+		{
+			switch(gm->m_LoadMinMaxType) 
+			{
+			case LOADTYPE_NORMAL:
+			case LOADTYPE_MAX:
+				if(!GetReacNew(node_key, &reac_d, NULL,NULL))continue;
+				break;
+			case LOADTYPE_MIN:
+				if(!GetReacNew(node_key, NULL,&reac_d,NULL))continue;
+				break;
+			case LOADTYPE_ALL:// absmax
+				if(!GetReacNew(node_key, NULL,NULL,&reac_d))continue;
+				break;
+			}
+		}
+				
+		if(m_ReacComponent == REACTION_COMPONENT_FXYZ) 
+		{
+			for(j=0;j<3;j++)val[j] = CalcReacValue(REACTION_COMPONENT_FX+j, reac_d);
+
+			if((val[0]==0.0) && (val[1]==0.0) && (val[2]==0.0))continue;
+			if(m_pDoc->m_pPostCtrl->IsAvailNode(node_key)) 
+			{
+				len = CalcReacValue(REACTION_COMPONENT_FXYZ, reac_d);
+				if(len>max_reac){ max_reac = len; m_MaxReacVal = len; m_KeyMaxReac = node_key;}
+				if(len<min_reac){ min_reac = len; m_MinReacVal = len; m_KeyMinReac = node_key;}
+				if(len>m_dMaxValue) { m_dMaxValue = len;  gm->m_nLgdMaxValKey = node_key;}
+				if(len<m_dMinValue) { m_dMinValue = len;  gm->m_nLgdMinValKey = node_key;}
+				
+				/*
+				for(int k=0; k<3; k++)
+				{
+					len = val[k];
+					if(len>max_reac){ max_reac = len; m_MaxReacVal = len; m_KeyMaxReac = node_key;}
+				  if(len<min_reac){ min_reac = len; m_MinReacVal = len; m_KeyMinReac = node_key;}
+					if(len>m_dMaxValue) { m_dMaxValue = len;  gm->m_nLgdMaxValKey = node_key;}
+				  if(len<m_dMinValue) { m_dMinValue = len;  gm->m_nLgdMinValKey = node_key;}
+				}
+				*/
+			}
+		}
+		else if(m_ReacComponent == REACTION_COMPONENT_MXYZ) 
+		{
+			for(j=0;j<3;j++)val[j] = CalcReacValue(REACTION_COMPONENT_MX+j, reac_d);
+
+			if((val[0]==0.0) && (val[1]==0.0) && (val[2]==0.0)) continue;
+
+			if (m_pDoc->m_pPostCtrl->IsAvailNode(node_key)) 
+			{
+				len = CalcReacValue(REACTION_COMPONENT_MXYZ, reac_d);
+				if(len>max_reac) { max_reac = len; m_MaxReacVal = len; m_KeyMaxReac = node_key; }
+				if(len<min_reac) { min_reac = len; m_MinReacVal = len; m_KeyMinReac = node_key; }
+				if(len>m_dMaxValue) { m_dMaxValue = len; gm->m_nLgdMaxValKey = node_key; }
+				if(len<m_dMinValue) { m_dMinValue = len; gm->m_nLgdMinValKey = node_key; }
+				
+				/*
+				for(int k=0; k<3; k++)
+				{
+					len = val[k];
+					if(len>max_reac) { max_reac = len; m_MaxReacVal = len; m_KeyMaxReac = node_key; }
+					if(len<min_reac) { min_reac = len; m_MinReacVal = len; m_KeyMinReac = node_key; }
+					if(len>m_dMaxValue) { m_dMaxValue = len; gm->m_nLgdMaxValKey = node_key; }
+					if(len<m_dMinValue) { m_dMinValue = len; gm->m_nLgdMinValKey = node_key; }
+				}
+				*/
+			}
+		}
+		else 
+		{
+			len = CalcReacValue(reac_d);
+			if(len == 0.0)continue;
+
+			if(m_pDoc->m_pPostCtrl->IsAvailNode(node_key)) 
+			{
+				if(len>max_reac) { max_reac = len; m_KeyMaxReac = node_key; m_MaxReacVal = len; }
+				if(len<min_reac) { min_reac = len; m_KeyMinReac = node_key; m_MinReacVal = len; }
+				if(len>m_dMaxValue) { m_dMaxValue = len; gm->m_nLgdMaxValKey = node_key; }
+				if(len<m_dMinValue) { m_dMinValue = len; gm->m_nLgdMinValKey = node_key; }
+			}
+		}
+		has_content = TRUE;
+		m_NodeKeyList.Add(node_key);
+		m_ReacDataList.Add(reac_d);
+	}
+
+	if(!has_content) 
+	{
+		m_MinReacVal = m_MaxReacVal = 0.0;
+		gm->m_nLgdMaxValKey = 0;
+		gm->m_nLgdMinValKey = 0;
+	}
+
+ 	if (!m_pContourEngine)m_pContourEngine = new CContourEngine(m_MinReacVal, m_MaxReacVal);
+	else m_pContourEngine->MakeRankMap(m_MinReacVal, m_MaxReacVal);
+
+	gm->m_pMyView->EndWaitCursor();
+
+	m_bReacDataSet = TRUE;
+}
+
+
+void CReactionEngine::InitEngine_All_First()
+{
+		m_SerialList.RemoveAll();
+		m_pDoc->m_pPostCtrl->GetLaneInfo(m_arLaneInfoNew);
+
+		int nNumOfLane = m_arLaneInfoNew.GetSize();
+		int nLaneIdx;
+		for(int i=0; i<nNumOfLane; i++)
+		{
+				nLaneIdx = i;
+				//nLaneIdx = m_pDoc->m_pPostCtrl->GetSerialLlan(KeyList[i])-1;
+
+				// 해석용 dummy sub lane 제외.      
+				if(m_pDoc->m_pPostCtrl->IsDummyLaneForSolver_bySerial(nLaneIdx+1))  continue;
+				if(m_pDoc->m_pPostCtrl->IsDummyLaneForSolver_bySerial_op(nLaneIdx+1))   continue;
+				m_SerialList.Add(nLaneIdx); 
+		}
+
+		DECLARE_GPSMD();
+		gm->m_bLoadDataExist = TRUE;
+
+		m_bInitEngine_All_First = TRUE;
+}
+
+void CReactionEngine::InitEngine_AllForOneNode(CDeformEngine *pDE,int nGPSInstruction )
+{
+		if (!m_bInitEngine_All_First)
+		{
+				InitEngine_All_First();
+		}
+
+		I_GPSModel		*gm=(I_GPSModel *) m_pGPSModel;
+
+		if(gm->m_LoadCaseType == D_LOADCASE_PUSHOVER && !m_pDoc->m_pPostCtrl->IsPushOverResultEnable())
+		{
+				//AfxMessageBox(_LS(IDS_WG_GPS_PUSHOVER_RESULT_UNAVAILABLE));
+				return;
+		}
+
+		m_bReacDataSet = FALSE;
+		m_mapSkew.RemoveAll();
+
+		//	if (((CGPSView *) gm->m_pMyView)->m_pRenderView)
+		//		return;
+
+		gm->SelectLoad();
+
+		int nGPSMode = (nGPSInstruction != -1)? nGPSInstruction:gm->m_GPSMode;
+		switch (nGPSMode) 
+		{
+		case GPS_COMMAND_IFLREAC:
+				MakeInflReacDataList_AllForOneNode();
+				break;
+		case GPS_COMMAND_IFSREAC:
+				MakeInflReacDataListS_AllForOneNode(pDE);
+				break;
+		default:
+				break;
+		}
+}
+
+
+void CReactionEngine::MakeReacDataList()
+{
+	///////////////////////////////////////////////////////////////////////////////////////////
+	// [MQC3302] 2010.04.16 - JHYUN                                                          //
+	// 이전에는 Reaction 값들이 부호를 고려한 Min, Max 를 찾아주고 있었다.                   //
+	// Reaction 에서의 부호는 방향성을 뜻한다.                                               //
+	// 그러므로 Min, Max 값은 절대값의 Min, Max 여야만 한다.                                 //
+	// 기존 코드를 최대한 건들지 않기 위해서 처음인지 구분하기 위해서 변수 nIndex 를 둔다.   //
+	// 처음을 제외 하고는 무조건 절대값의 값으로 비교한다.                                   //
+	///////////////////////////////////////////////////////////////////////////////////////////
+
+	///////////////////////////////////////////////////////////////////////////////////////////
+	// MNET:4424-SHJUNG2-20120418                                                            //
+	// 부호를 고려하여 Min, Max 를 찾아주던 초기 방식으로 복구                               //
+	// 절대값 Min, Max 는, FXYZ, MXYZ 결과에서 MAX 값만 출력하는 경우에만 적용되어야 함.     //
+	// FXYZ, MXYZ 결과에서 MAX만 출력하던 것을 MIN, MAX를 출력하는 것으로 변경               //
+	// 따라서 FXYZ, MXYZ 결과에서도 부호 고려한 Min, Max 사용                                //
+	///////////////////////////////////////////////////////////////////////////////////////////
+
+	I_GPSModel	*gm=(I_GPSModel *) m_pGPSModel;
+	
+	int			i,j,node_num;
+	double	max_reac=-DBL_MAX, min_reac=DBL_MAX,len, val[3];
+	BOOL		has_content=FALSE;
+
+	T_NODE_K	node_key;
+	T_REAC_D	reac_d;
+	
+	m_dMaxValue = -DBL_MAX;
+	m_dMinValue = DBL_MAX;
+
+	if(!gm->m_bLoadDataSet)return;
+	gm->m_pMyView->BeginWaitCursor();
+
+	m_KeyMaxReac = 0;
+	m_KeyMinReac = 0;
+	m_MaxReacVal = -DBL_MAX;
+	m_MinReacVal = DBL_MAX;
+
+	switch (m_ReacComponent) 
+	{
+	case REACTION_COMPONENT_FX:
+	case REACTION_COMPONENT_MX:
+	case REACTION_COMPONENT_W:
+	  m_MaxAxis = m_MinAxis = 0;
+		break;
+	case REACTION_COMPONENT_FY:
+	case REACTION_COMPONENT_MY:
+	  m_MaxAxis = m_MinAxis = 1;
+		break;
+	case REACTION_COMPONENT_FZ:
+	case REACTION_COMPONENT_MZ:
+	  m_MaxAxis = m_MinAxis = 2;
+		break;
+	}
+
+	m_NodeKeyList.RemoveAll();
+	m_ReacReverseFg.RemoveAll();  //KYE-HONG-20020204
+	m_ReacDataList.RemoveAll();
+	node_num = gm->m_NKeyListActive.GetSize();
+	for(i=0;i<node_num;i++) 
+	{
+		node_key = gm->m_NKeyListActive[i];
+		switch(gm->m_LoadMinMaxType) 
+		{
+		case LOADTYPE_NORMAL:
+		case LOADTYPE_MAX:
+		  if(!GetReacNew(node_key, &reac_d, NULL,NULL))continue;
+		  break;
+		case LOADTYPE_MIN:
+		  if(!GetReacNew(node_key, NULL,&reac_d,NULL))continue;
+			break;
+	  case LOADTYPE_ALL:// absmax
+		  if(!GetReacNew(node_key, NULL,NULL,&reac_d))continue;
+			break;
+		}
+
+		if(m_ReacComponent == REACTION_COMPONENT_FXYZ) 
+		{
+			for(j=0;j<3;j++)val[j] = CalcReacValue(REACTION_COMPONENT_FX+j, reac_d);
+
+			if((val[0]==0.0) && (val[1]==0.0) && (val[2]==0.0))continue;
+			if(m_pDoc->m_pPostCtrl->IsAvailNode(node_key)) 
+			{
+				len = CalcReacValue(REACTION_COMPONENT_FXYZ, reac_d);
+				if(len>max_reac){ max_reac = len; m_MaxReacVal = len; m_KeyMaxReac = node_key;}
+				if(len<min_reac){ min_reac = len; m_MinReacVal = len; m_KeyMinReac = node_key;}
+				if(len>m_dMaxValue) { m_dMaxValue = len;  gm->m_nLgdMaxValKey = node_key;}
+				if(len<m_dMinValue) { m_dMinValue = len;  gm->m_nLgdMinValKey = node_key;}
+				
+				/*
+				for(int k=0; k<3; k++)
+				{
+					len = val[k];
+					if(len>max_reac){ max_reac = len; m_MaxReacVal = len; m_KeyMaxReac = node_key;}
+				  if(len<min_reac){ min_reac = len; m_MinReacVal = len; m_KeyMinReac = node_key;}
+					if(len>m_dMaxValue) { m_dMaxValue = len;  gm->m_nLgdMaxValKey = node_key;}
+				  if(len<m_dMinValue) { m_dMinValue = len;  gm->m_nLgdMinValKey = node_key;}
+				}
+				*/
+			}
+		}
+		else if(m_ReacComponent == REACTION_COMPONENT_MXYZ) 
+		{
+			for(j=0;j<3;j++)val[j] = CalcReacValue(REACTION_COMPONENT_MX+j, reac_d);
+
+			if((val[0]==0.0) && (val[1]==0.0) && (val[2]==0.0)) continue;
+
+			if (m_pDoc->m_pPostCtrl->IsAvailNode(node_key)) 
+			{
+				len = CalcReacValue(REACTION_COMPONENT_MXYZ, reac_d);
+				if(len>max_reac) { max_reac = len; m_MaxReacVal = len; m_KeyMaxReac = node_key; }
+				if(len<min_reac) { min_reac = len; m_MinReacVal = len; m_KeyMinReac = node_key; }
+				if(len>m_dMaxValue) { m_dMaxValue = len; gm->m_nLgdMaxValKey = node_key; }
+				if(len<m_dMinValue) { m_dMinValue = len; gm->m_nLgdMinValKey = node_key; }
+				
+				/*
+				for(int k=0; k<3; k++)
+				{
+					len = val[k];
+					if(len>max_reac) { max_reac = len; m_MaxReacVal = len; m_KeyMaxReac = node_key; }
+					if(len<min_reac) { min_reac = len; m_MinReacVal = len; m_KeyMinReac = node_key; }
+					if(len>m_dMaxValue) { m_dMaxValue = len; gm->m_nLgdMaxValKey = node_key; }
+					if(len<m_dMinValue) { m_dMinValue = len; gm->m_nLgdMinValKey = node_key; }
+				}
+				*/
+			}
+		}
+		else 
+		{
+			len = CalcReacValue(reac_d);
+			if(len == 0.0)continue;
+
+			if(m_pDoc->m_pPostCtrl->IsAvailNode(node_key)) 
+			{
+				if(len>max_reac) { max_reac = len; m_KeyMaxReac = node_key; m_MaxReacVal = len; }
+				if(len<min_reac) { min_reac = len; m_KeyMinReac = node_key; m_MinReacVal = len; }
+				if(len>m_dMaxValue) { m_dMaxValue = len; gm->m_nLgdMaxValKey = node_key; }
+				if(len<m_dMinValue) { m_dMinValue = len; gm->m_nLgdMinValKey = node_key; }
+			}
+		}
+		has_content = TRUE;
+		m_NodeKeyList.Add(node_key);
+		m_ReacDataList.Add(reac_d);
+	}
+
+	if(!has_content) 
+	{
+		m_MinReacVal = m_MaxReacVal = 0.0;
+		gm->m_nLgdMaxValKey = 0;
+		gm->m_nLgdMinValKey = 0;
+	}
+
+ 	if (!m_pContourEngine)m_pContourEngine = new CContourEngine(m_MinReacVal, m_MaxReacVal);
+	else m_pContourEngine->MakeRankMap(m_MinReacVal, m_MaxReacVal);
+
+	gm->m_pMyView->EndWaitCursor();
+
+	m_bReacDataSet = TRUE;
+}
+
+
+
+double CReactionEngine::CalcReacValue(T_REAC_D &reac_d)
+{
+	switch (m_ReacComponent) 
+	{	
+	case REACTION_COMPONENT_FX: return reac_d.dblReac[0];
+	case REACTION_COMPONENT_FY: return reac_d.dblReac[1];
+	case REACTION_COMPONENT_FZ: return reac_d.dblReac[2];
+	case REACTION_COMPONENT_MX: return reac_d.dblReac[3];
+	case REACTION_COMPONENT_MY: return reac_d.dblReac[4];
+	case REACTION_COMPONENT_MZ: return reac_d.dblReac[5];
+	case REACTION_COMPONENT_W:	return reac_d.dblReac[6];
+	}
+	return 0.0;
+}
+
+double CReactionEngine::CalcReacValue(int comp, T_REAC_D &reac_d)
+{
+	switch(comp) 
+	{
+	case REACTION_COMPONENT_FX:
+		return reac_d.dblReac[0];
+	case REACTION_COMPONENT_FY:
+		return reac_d.dblReac[1];
+	case REACTION_COMPONENT_FZ:
+		return reac_d.dblReac[2];
+	case REACTION_COMPONENT_FXYZ:
+		return sqrt(reac_d.dblReac[0]*reac_d.dblReac[0]+
+					reac_d.dblReac[1]*reac_d.dblReac[1]+
+					reac_d.dblReac[2]*reac_d.dblReac[2]);
+	case REACTION_COMPONENT_MX:
+		return reac_d.dblReac[3];
+	case REACTION_COMPONENT_MY:
+		return reac_d.dblReac[4];
+	case REACTION_COMPONENT_MZ:
+		return reac_d.dblReac[5];
+	case REACTION_COMPONENT_MXYZ:
+		return sqrt(reac_d.dblReac[3]*reac_d.dblReac[3]+
+					reac_d.dblReac[4]*reac_d.dblReac[4]+
+					reac_d.dblReac[5]*reac_d.dblReac[5]);
+	case REACTION_COMPONENT_W:
+		return reac_d.dblReac[6];
+	}
+	return 0.0;
+}
+
+double CReactionEngine::CalcMaxReacForce(T_REAC_D &reac_d)
+{
+	if(fabs(reac_d.dblReac[0]) > fabs(reac_d.dblReac[1])) 
+	{
+		if(fabs(reac_d.dblReac[0]) > fabs(reac_d.dblReac[2]))
+			return reac_d.dblReac[0];
+		else
+			return reac_d.dblReac[2];
+	}
+	else 
+	{
+		if(fabs(reac_d.dblReac[1]) > fabs(reac_d.dblReac[2]))
+			return reac_d.dblReac[1];
+		else
+			return reac_d.dblReac[2];
+	}
+}
+
+double CReactionEngine::CalcMaxReacMoment(T_REAC_D &reac_d)
+{
+	if(fabs(reac_d.dblReac[3]) > fabs(reac_d.dblReac[4])) 
+	{
+		if(fabs(reac_d.dblReac[3]) > fabs(reac_d.dblReac[5]))
+			return reac_d.dblReac[3];
+		else
+			return reac_d.dblReac[5];
+	}
+	else 
+	{
+		if(fabs(reac_d.dblReac[4]) > fabs(reac_d.dblReac[5]))
+			return reac_d.dblReac[4];
+		else
+			return reac_d.dblReac[5];
+	}
+}
+
+BOOL CReactionEngine::GetReacData(T_NODE_K nkey, T_REAC_D &reac_d)
+{
+	I_GPSModel	*gm=(I_GPSModel *) m_pGPSModel;
+	
+	int	i, node_num=m_NodeKeyList.GetSize();
+
+	for(i=0;i<node_num;i++) 
+	{
+		if(m_NodeKeyList[i] == nkey) 
+		{
+			reac_d = m_ReacDataList[i];
+			return TRUE;
+		}
+	}
+
+	if(!m_pDoc->m_pPostCtrl->IsAvailNode(nkey)) 
+	{
+		for (i=0;i<REAC_SIZE;i++)
+			reac_d.dblReac[i] = 0.0;
+		return FALSE;
+	}
+	for(i=0;i<REAC_SIZE;i++)reac_d.dblReac[i] = 0.0;
+	return FALSE;
+}
+
+void CReactionEngine::InitReacAdjustFactor()
+{
+	I_GPSModel	*gm=(I_GPSModel *) m_pGPSModel;
+	double		max_l, max_abs;
+	C3DPoint	min_p, max_p;
+	CRect		rect;
+	
+	if(m_bLockAdjFactor)
+		return;
+
+	gm->m_pMyView->GetClientRect(&rect);
+	max_l = gm->m_pGPSCtrl->GetWorldLength((double) ((rect.Width()+rect.Height())/30));
+
+//	m_pDoc->calcRangeModel(min_p.x, min_p.y, min_p.z, max_p.x, max_p.y, max_p.z,
+//															 NULL, NULL, TRUE, NULL, TRUE,
+//															 ((I_GPSModel *) m_pGPSModel)->m_bFrameThick||((I_GPSModel *) m_pGPSModel)->m_bPlaneThick);
+	
+	gm->GetRangeModel(&min_p,&max_p);
+	m_dMaxModelLength = max(max(max_p.x-min_p.x, max_p.y-min_p.y), max_p.z-min_p.z);
+
+	if (fabs(m_MaxReacVal) > fabs(m_MinReacVal))
+		max_abs = fabs(m_MaxReacVal);
+	else
+		max_abs = fabs(m_MinReacVal);
+
+	if (max_abs > -1e-15 && max_abs < 1e-15)	
+		max_abs = 1.0f;
+
+	m_ReacAdjustFactor = max_l / max_abs;
+}
+
+void CReactionEngine::InitReacAdjustFactor(double max_abs)
+{
+	I_GPSModel	*gm=(I_GPSModel *) m_pGPSModel;
+	double		max_l;
+	C3DPoint	min_p, max_p;
+	CRect		rect;
+	
+	if(m_bLockAdjFactor)
+		return;
+
+	gm->m_pMyView->GetClientRect(&rect);
+	max_l = gm->m_pGPSCtrl->GetWorldLength((double) ((rect.Width()+rect.Height())/30));
+
+	gm->GetRangeModel(&min_p,&max_p);
+	m_dMaxModelLength = max(max(max_p.x-min_p.x, max_p.y-min_p.y), max_p.z-min_p.z);
+
+	if (max_abs > -1e-15 && max_abs < 1e-15)	
+		max_abs = 1.0f;
+
+	m_ReacAdjustFactor = max_l / max_abs;
+}
+
+void CReactionEngine::DrawReactionValue(CDC *pDC)
+{
+	I_GPSModel	*gm=(I_GPSModel *) m_pGPSModel;
+	
+	int			i, j, node_num=m_NodeKeyList.GetSize();
+	T_NODE_D	node_d;
+	T_REAC_D	reac_d;
+	double		arr_len, ln_len, len;
+	CBrush		arr_brush, arr_brush_max, *old_brush;
+	CPen		  arr_pen, ln_pen, ln_pen_max, *old_pen;
+
+	CArray<int, int>														index;
+	CArray<CList<C3DPoint,C3DPoint> *, CList<C3DPoint,C3DPoint> *> poly_list;
+	C3DPoint PntNode;
+	
+	COLORREF ColLn,ColLnMax;
+	
+	//----------------------------------------------------------------
+	// Reaction꼬리의 색깔 
+	//----------------------------------------------------------------
+	// Back Ground Black
+	int nRVal = GetRValue(gm->m_DOPT.CL.m_ClientBackColor);
+	int nGVal = GetGValue(gm->m_DOPT.CL.m_ClientBackColor);
+	int nBVal = GetBValue(gm->m_DOPT.CL.m_ClientBackColor);
+	if(nRVal == 0 && nGVal == 0 && nBVal == 0)
+	{
+		ColLn     = RGB(0, 255, 0);
+		ColLnMax  = RGB(0, 255, 255);
+	}
+	// Back Ground Another
+	else
+	{
+		ColLn     = RGB(0,  64, 0);
+		ColLnMax  = RGB(0, 0, 128);
+	}
+
+	// Print White/Black Color
+	if(gm->m_bVirtualMode)
+	{
+		if(gm->m_DOPT.m_PrintMode == 0) 
+		{		
+			ColLn     = RGB(0, 0, 0);
+			ColLnMax  = RGB(0, 0, 0);
+		}
+	}
+
+	//!@#$ MNET:XXXX 20060220 LBI
+	//arr_brush.CreateSolidBrush(RGB(255, 255, 128)); 
+	arr_brush.CreateSolidBrush(RGB(90, 90, 255)); 
+	arr_brush_max.CreateSolidBrush(RGB(255, 64, 64));
+	arr_pen.CreatePen(PS_SOLID, 1, RGB(0, 0, 0));
+	ln_pen.CreatePen(PS_SOLID, 1, ColLn);
+	ln_pen_max.CreatePen(PS_SOLID, 1, ColLnMax);
+
+	gm->GPSDrawOriginal(pDC);
+	InitReacAdjustFactor();
+
+	if(fabs(m_MaxReacVal) > fabs(m_MinReacVal)) 
+		arr_len = fabs(m_MaxReacVal)*m_ReacAdjustFactor*m_ReacScaleFactor*0.35;
+	else
+		arr_len = fabs(m_MinReacVal)*m_ReacAdjustFactor*m_ReacScaleFactor*0.35;
+	
+	old_brush = (CBrush *) pDC->SelectObject(&arr_brush);
+	old_pen = (CPen *) pDC->SelectObject(&arr_pen);
+
+	for(i=0;i<node_num;i++) 
+	{
+		m_pDoc->m_pAttrCtrl->GetNode(m_NodeKeyList[i], node_d);
+		PntNode.x = node_d.x;
+		PntNode.y = node_d.y;
+		PntNode.z = node_d.z;
+		if(!GetReacData(m_NodeKeyList[i], reac_d))continue;
+
+		switch(m_ReacComponent) 
+		{
+		case REACTION_COMPONENT_FXYZ:
+			for (j=0;j<3;j++) 
+			{
+				len = CalcReacValue(REACTION_COMPONENT_FX+j, reac_d);
+				if(len == 0.0)continue;
+				ln_len = len*m_ReacAdjustFactor*m_ReacScaleFactor*1.2;
+				if(len < 0.0) DoComponentReaction(m_NodeKeyList[i],node_d, REACTION_COMPONENT_FX+j, -arr_len, ln_len, poly_list);
+				else					DoComponentReaction(m_NodeKeyList[i],node_d, REACTION_COMPONENT_FX+j, arr_len, ln_len, poly_list);
+			}
+			break;
+		case REACTION_COMPONENT_MXYZ:
+			for (j=0;j<3;j++) 
+			{
+				len = CalcReacValue(REACTION_COMPONENT_MX+j, reac_d);
+				if(len == 0.0)continue;
+				ln_len = len*m_ReacAdjustFactor*m_ReacScaleFactor*1.2;
+				if(len < 0.0) DoComponentReaction(m_NodeKeyList[i],node_d, REACTION_COMPONENT_MX+j, -arr_len, ln_len, poly_list);
+				else					DoComponentReaction(m_NodeKeyList[i],node_d, REACTION_COMPONENT_MX+j, arr_len, ln_len, poly_list);
+			}
+			break;
+		default:
+			len = CalcReacValue(reac_d);
+			if(len == 0.0)  continue;
+			ln_len = len*m_ReacAdjustFactor*m_ReacScaleFactor*1.2;
+			if (len < 0.0)  DoComponentReaction(m_NodeKeyList[i],node_d, m_ReacComponent, -arr_len, ln_len, poly_list);
+			else				    DoComponentReaction(m_NodeKeyList[i],node_d, m_ReacComponent, arr_len, ln_len, poly_list);
+			break;
+		}
+
+		gm->m_pGPSCtrl->GetZSortPolygonList(poly_list, index);
+		
+		if(!gm->m_pGPSCtrl->IsGLRenderer()) // 임시로 막음. 차후 확인 해 볼것. 
+		{
+			if(gm->m_bVirtualMode)gm->m_pGPSCtrl->DrawNodeInClientWindow(pDC, PntNode);
+	    else		              gm->m_pGPSCtrl->DrawNode(pDC, PntNode);
+		}
+
+		for(j=0;j<index.GetSize();j++) 
+		{
+			// 화살표 꼬리
+			if(poly_list[index[j]]->GetCount() == 2) 
+			{
+				if(m_NodeKeyList[i] == m_KeyMaxReac)pDC->SelectObject(&ln_pen_max);
+				else					                      pDC->SelectObject(&ln_pen);
+				if(gm->m_bVirtualMode)gm->m_pGPSCtrl->DrawLine3DOnClientWindow(pDC, poly_list[index[j]]->GetHead(), poly_list[index[j]]->GetTail());
+				else					        gm->m_pGPSCtrl->DrawLine3D(pDC, poly_list[index[j]]->GetHead(), poly_list[index[j]]->GetTail());
+			}
+			// 화살표 머리
+			else 
+			{
+				pDC->SelectObject(&arr_pen);
+				if(m_NodeKeyList[i] == m_KeyMaxReac)  pDC->SelectObject(&arr_brush_max);
+				else					                        pDC->SelectObject(&arr_brush);
+				if(gm->m_bVirtualMode)  gm->m_pGPSCtrl->DrawPolygon3DFillOnClientWindow(pDC, *(poly_list[index[j]]));
+				else					          gm->m_pGPSCtrl->DrawPolygon3DFill(pDC, *(poly_list[index[j]]));
+			}
+		}
+
+		for(j=0;j<poly_list.GetSize();j++) 
+		{
+			poly_list[j]->RemoveAll();
+			delete poly_list[j];
+		}
+		poly_list.RemoveAll();
+		index.RemoveAll();
+	}
+
+	pDC->SelectObject(old_pen);
+	pDC->SelectObject(old_brush);
+	arr_brush.DeleteObject();
+	arr_brush_max.DeleteObject();
+	arr_pen.DeleteObject();
+	ln_pen.DeleteObject();
+	ln_pen_max.DeleteObject();
+}
+
+void CReactionEngine::DrawReactionValueInfl(CDC *pDC)
+{
+	I_GPSModel	*gm=(I_GPSModel *) m_pGPSModel;
+	
+	int			i, j, node_num=m_NodeKeyList.GetSize();
+	T_NODE_D	node_d;
+	T_REAC_D	reac_d;
+	double		arr_len, ln_len, len;
+	CBrush		arr_brush, *old_brush;
+	CPen		arr_pen, ln_pen, *old_pen;
+
+	CArray <int, int>														index;
+	CArray <double, double &>												val_list;
+	CArray <CList <C3DPoint, C3DPoint> *, CList <C3DPoint, C3DPoint> *>		poly_list;
+
+//	gm->GPSDrawOriginal(pDC);
+	gm->m_pDeformEngine->DrawDeformedShape(pDC);
+
+	arr_pen.CreatePen(PS_SOLID, 1, m_pContourEngine->m_ElemColor);
+
+	InitReacAdjustFactor();
+
+	if (fabs(m_MaxReacVal) > fabs(m_MinReacVal)) {
+		arr_len = fabs(m_MaxReacVal)*m_ReacAdjustFactor*m_ReacScaleFactor*0.35;
+	}
+	else {
+		arr_len = fabs(m_MinReacVal)*m_ReacAdjustFactor*m_ReacScaleFactor*0.35;
+	}
+
+	for (i=0;i<node_num;i++) {
+		m_pDoc->m_pAttrCtrl->GetNode(m_NodeKeyList[i], node_d);
+		if (!GetReacData(m_NodeKeyList[i], reac_d))
+			continue;
+
+		gm->m_pDeformEngine->GetDisplacedPoint(m_NodeKeyList[i], node_d);
+
+		switch (m_ReacComponent) {
+			case REACTION_COMPONENT_FXYZ:
+				for (j=0;j<3;j++) {
+					len = CalcReacValue(REACTION_COMPONENT_FX+j, reac_d);
+					if (len == 0.0)
+						continue;
+					ln_len = len*m_ReacAdjustFactor*m_ReacScaleFactor*1.2;
+					if (len < 0.0)
+						DoComponentReaction(m_NodeKeyList[i],node_d, REACTION_COMPONENT_FX+j, -arr_len, ln_len, poly_list, len, val_list);
+					else
+						DoComponentReaction(m_NodeKeyList[i],node_d, REACTION_COMPONENT_FX+j, arr_len, ln_len, poly_list, len, val_list);
+				}
+				break;
+			case REACTION_COMPONENT_MXYZ:
+				for (j=0;j<3;j++) {
+					len = CalcReacValue(REACTION_COMPONENT_MX+j, reac_d);
+					if (len == 0.0)
+						continue;
+					ln_len = len*m_ReacAdjustFactor*m_ReacScaleFactor*1.2;
+					if (len < 0.0)
+						DoComponentReaction(m_NodeKeyList[i],node_d, REACTION_COMPONENT_MX+j, -arr_len, ln_len, poly_list, len, val_list);
+					else
+						DoComponentReaction(m_NodeKeyList[i],node_d, REACTION_COMPONENT_MX+j, arr_len, ln_len, poly_list, len, val_list);
+				}
+				break;
+			default:
+				len = CalcReacValue(reac_d);
+				if (len == 0.0)
+					continue;
+				ln_len = len*m_ReacAdjustFactor*m_ReacScaleFactor*1.2;
+				if (len < 0.0)
+					DoComponentReaction(m_NodeKeyList[i],node_d, m_ReacComponent, -arr_len, ln_len, poly_list, len, val_list);
+				else
+					DoComponentReaction(m_NodeKeyList[i],node_d, m_ReacComponent, arr_len, ln_len, poly_list, len, val_list);
+				break;
+		}
+
+		gm->m_pGPSCtrl->GetZSortPolygonList(poly_list, index);
+
+		for (j=0;j<index.GetSize();j++) {
+			// 화살표 꼬리
+			if (poly_list[index[j]]->GetCount() == 2) {
+				if (gm->m_bGradient)
+					ln_pen.CreatePen(PS_SOLID, 1, m_pContourEngine->GetValueColorGrad(val_list[index[j]]));
+				else
+					ln_pen.CreatePen(PS_SOLID, 1, m_pContourEngine->GetValueColor(val_list[index[j]]));
+
+				old_pen = (CPen *) pDC->SelectObject(&ln_pen);
+
+				if (gm->m_bVirtualMode)
+					gm->m_pGPSCtrl->DrawLine3DOnClientWindow(pDC, poly_list[index[j]]->GetHead(), poly_list[index[j]]->GetTail());
+				else
+					gm->m_pGPSCtrl->DrawLine3D(pDC, poly_list[index[j]]->GetHead(), poly_list[index[j]]->GetTail());
+
+				pDC->SelectObject(old_pen);
+				ln_pen.DeleteObject();
+			}
+			// 화살표 머리
+			else {
+				if (gm->m_bGradient)
+					arr_brush.CreateSolidBrush(m_pContourEngine->GetValueColorGrad(val_list[index[j]]));
+				else
+					arr_brush.CreateSolidBrush(m_pContourEngine->GetValueColor(val_list[index[j]]));
+
+				old_pen = (CPen *) pDC->SelectObject(&arr_pen);
+				old_brush = (CBrush *) pDC->SelectObject(&arr_brush);
+
+				if (gm->m_bVirtualMode)
+					gm->m_pGPSCtrl->DrawPolygon3DFillOnClientWindow(pDC, *(poly_list[index[j]]));
+				else
+					gm->m_pGPSCtrl->DrawPolygon3DFill(pDC, *(poly_list[index[j]]));
+
+				pDC->SelectObject(old_pen);
+				pDC->SelectObject(old_brush);
+				arr_brush.DeleteObject();
+			}
+		}
+
+		for (j=0;j<poly_list.GetSize();j++) {
+			poly_list[j]->RemoveAll();
+			delete poly_list[j];
+		}
+		poly_list.RemoveAll();
+		index.RemoveAll();
+		val_list.RemoveAll();
+	}
+
+	arr_pen.DeleteObject();
+}
+
+/*
+void CReactionEngine::DoComponentReaction(CDC *pDC, T_NODE_D &node_d, int comp, double arr_len, double ln_len)
+{
+	I_GPSModel	*gm=(I_GPSModel *) m_pGPSModel;
+	C3DPoint	arr_tri[3], arr_ln[2];
+	CBrush		arr_brush, *old_brush;
+	CPen		arr_pen, ln_pen, *old_pen;
+	CList <C3DPoint, C3DPoint>	vtx;
+
+	arr_brush.CreateSolidBrush(RGB(0, 0, 255));
+	arr_pen.CreatePen(PS_SOLID, 1, RGB(0, 0, 255));
+	ln_pen.CreatePen(PS_SOLID, 1, RGB(0, 255, 0));
+
+	switch (comp) {
+		case REACTION_COMPONENT_FX:
+			arr_tri[0].Set(node_d.x, node_d.y, node_d.z);
+			arr_tri[1].Set(node_d.x-arr_len, node_d.y, node_d.z+arr_len*0.3);
+			arr_tri[2].Set(node_d.x-arr_len, node_d.y, node_d.z-arr_len*0.3);
+			arr_ln[0].Set(node_d.x-arr_len, node_d.y, node_d.z);
+			arr_ln[1].Set(node_d.x-arr_len-ln_len, node_d.y, node_d.z);
+			break;
+		case REACTION_COMPONENT_FY:
+			arr_tri[0].Set(node_d.x, node_d.y, node_d.z);
+			arr_tri[1].Set(node_d.x+arr_len*0.3, node_d.y-arr_len, node_d.z);
+			arr_tri[2].Set(node_d.x-arr_len*0.3, node_d.y-arr_len, node_d.z);
+			arr_ln[0].Set(node_d.x, node_d.y-arr_len, node_d.z);
+			arr_ln[1].Set(node_d.x, node_d.y-arr_len-ln_len, node_d.z);
+			break;
+		case REACTION_COMPONENT_FZ:
+			arr_tri[0].Set(node_d.x, node_d.y, node_d.z);
+			arr_tri[1].Set(node_d.x+arr_len*0.3, node_d.y, node_d.z-arr_len);
+			arr_tri[2].Set(node_d.x-arr_len*0.3, node_d.y, node_d.z-arr_len);
+			arr_ln[0].Set(node_d.x, node_d.y, node_d.z-arr_len);
+			arr_ln[1].Set(node_d.x, node_d.y, node_d.z-arr_len-ln_len);
+			break;
+		case REACTION_COMPONENT_MX:
+			arr_tri[0].Set(node_d.x, node_d.y, node_d.z);
+			arr_tri[1].Set(node_d.x+arr_len*0.3, node_d.y, node_d.z-arr_len);
+			arr_tri[2].Set(node_d.x-arr_len*0.3, node_d.y, node_d.z-arr_len);
+			arr_ln[0].Set(node_d.x, node_d.y, node_d.z-arr_len);
+			arr_ln[1].Set(node_d.x, node_d.y, node_d.z-arr_len-ln_len);
+			break;
+		case REACTION_COMPONENT_MY:
+			arr_tri[0].Set(node_d.x, node_d.y, node_d.z);
+			arr_tri[1].Set(node_d.x+arr_len*0.3, node_d.y, node_d.z-arr_len);
+			arr_tri[2].Set(node_d.x-arr_len*0.3, node_d.y, node_d.z-arr_len);
+			arr_ln[0].Set(node_d.x, node_d.y, node_d.z-arr_len);
+			arr_ln[1].Set(node_d.x, node_d.y, node_d.z-arr_len-ln_len);
+			break;
+		case REACTION_COMPONENT_MZ:
+			arr_tri[0].Set(node_d.x, node_d.y, node_d.z);
+			arr_tri[1].Set(node_d.x+arr_len*0.3, node_d.y-arr_len, node_d.z);
+			arr_tri[2].Set(node_d.x-arr_len*0.3, node_d.y-arr_len, node_d.z);
+			arr_ln[0].Set(node_d.x, node_d.y-arr_len, node_d.z);
+			arr_ln[1].Set(node_d.x, node_d.y-arr_len-ln_len, node_d.z);
+			break;
+	}
+
+	vtx.AddTail(arr_tri[0]);
+	vtx.AddTail(arr_tri[1]);
+	vtx.AddTail(arr_tri[2]);
+
+	old_brush = (CBrush *) pDC->SelectObject(&arr_brush);
+	old_pen = (CPen *) pDC->SelectObject(&arr_pen);
+	if (gm->m_bVirtualMode || gm->m_bGradient)
+		gm->m_pGPSCtrl->DrawPolygon3DFillOnClientWindow(pDC, vtx);
+	else
+		gm->m_pGPSCtrl->DrawPolygon3DFill(pDC, vtx);
+	pDC->SelectObject(&ln_pen);
+	if (gm->m_bVirtualMode || gm->m_bGradient)
+		gm->m_pGPSCtrl->DrawLine3DOnClientWindow(pDC, arr_ln[0], arr_ln[1]);
+	else
+		gm->m_pGPSCtrl->DrawLine3D(pDC, arr_ln[0], arr_ln[1]);
+
+	vtx.RemoveAll();
+
+	pDC->SelectObject(old_pen);
+	pDC->SelectObject(old_brush);
+	arr_brush.DeleteObject();
+	arr_pen.DeleteObject();
+	ln_pen.DeleteObject();
+}
+*/
+void CReactionEngine::DoComponentReaction(T_NODE_K key_node,T_NODE_D &node_d, int comp, double arr_len, double ln_len,
+										  CArray <CList <C3DPoint, C3DPoint> *, CList <C3DPoint, C3DPoint> *> &poly_list)
+{
+	I_GPSModel	*gm=(I_GPSModel *) m_pGPSModel;
+	C3DPoint	arr_tri[10], arr_ln[2];
+	int			  i;
+	BOOL		  is_moment;
+
+	CList<C3DPoint, C3DPoint>	*polygon;
+
+	switch(comp) 
+	{
+	case REACTION_COMPONENT_FX:
+		{
+			is_moment = FALSE;
+			
+			arr_tri[0].Set(node_d.x,			node_d.y,				node_d.z);
+			arr_tri[1].Set(node_d.x-arr_len,	node_d.y+arr_len*0.3,	node_d.z+arr_len*0.3);
+			arr_tri[2].Set(node_d.x-arr_len,	node_d.y+arr_len*0.3,	node_d.z-arr_len*0.3);
+			arr_tri[3].Set(node_d.x-arr_len,	node_d.y-arr_len*0.3,	node_d.z-arr_len*0.3);
+			arr_tri[4].Set(node_d.x-arr_len,	node_d.y-arr_len*0.3,	node_d.z+arr_len*0.3);
+			
+			if(m_bLocalValue)
+				for(int i=1; i<5; i++)
+					RotatebyLocalCoord(key_node,node_d,arr_tri[i]);
+				
+				
+				for (i=0;i<4;i++) {
+					polygon = new CList <C3DPoint, C3DPoint>;
+					polygon->AddTail(arr_tri[0]);
+					polygon->AddTail(arr_tri[1+i]);
+					if (i == 3)
+						polygon->AddTail(arr_tri[1]);
+					else
+						polygon->AddTail(arr_tri[2+i]);
+					poly_list.Add(polygon);
+				}
+				polygon = new CList <C3DPoint, C3DPoint>;
+				for (i=1;i<5;i++)
+					polygon->AddTail(arr_tri[i]);
+				poly_list.Add(polygon);
+				
+				arr_ln[0].Set(node_d.x-arr_len,			node_d.y, node_d.z);
+				arr_ln[1].Set(node_d.x-arr_len-ln_len,	node_d.y, node_d.z);
+				
+				if(m_bLocalValue)
+					for(int i=0; i<2; i++)
+						RotatebyLocalCoord(key_node,node_d,arr_ln[i]);
+					
+					//꼬리 
+					polygon = new CList <C3DPoint, C3DPoint>;
+					polygon->AddTail(arr_ln[0]);
+					polygon->AddTail(arr_ln[1]);
+					poly_list.Add(polygon);
+		}
+		break;
+	case REACTION_COMPONENT_FY:
+		{
+			is_moment = FALSE;
+			
+			arr_tri[0].Set(node_d.x,				node_d.y,			node_d.z);
+			arr_tri[1].Set(node_d.x+arr_len*0.3,	node_d.y-arr_len,	node_d.z+arr_len*0.3);
+			arr_tri[2].Set(node_d.x+arr_len*0.3,	node_d.y-arr_len,	node_d.z-arr_len*0.3);
+			arr_tri[3].Set(node_d.x-arr_len*0.3,	node_d.y-arr_len,	node_d.z-arr_len*0.3);
+			arr_tri[4].Set(node_d.x-arr_len*0.3,	node_d.y-arr_len,	node_d.z+arr_len*0.3);
+			
+			if(m_bLocalValue)
+				for(int i=1; i<5; i++)
+					RotatebyLocalCoord(key_node,node_d,arr_tri[i]);
+				
+				for (i=0;i<4;i++) {
+					polygon = new CList <C3DPoint, C3DPoint>;
+					polygon->AddTail(arr_tri[0]);
+					polygon->AddTail(arr_tri[1+i]);
+					if (i == 3)
+						polygon->AddTail(arr_tri[1]);
+					else
+						polygon->AddTail(arr_tri[2+i]);
+					poly_list.Add(polygon);
+				}
+				polygon = new CList <C3DPoint, C3DPoint>;
+				for (i=1;i<5;i++)
+					polygon->AddTail(arr_tri[i]);
+				poly_list.Add(polygon);
+				
+				arr_ln[0].Set(node_d.x, node_d.y-arr_len,			node_d.z);
+				arr_ln[1].Set(node_d.x, node_d.y-arr_len-ln_len,	node_d.z);
+				
+				if(m_bLocalValue)
+					for(int i=0; i<2; i++)
+						RotatebyLocalCoord(key_node,node_d,arr_ln[i]);
+					
+					polygon = new CList <C3DPoint, C3DPoint>;
+					polygon->AddTail(arr_ln[0]);
+					polygon->AddTail(arr_ln[1]);
+					poly_list.Add(polygon);
+		}
+		break;
+	case REACTION_COMPONENT_FZ:
+		{
+			is_moment = FALSE;
+			
+			arr_tri[0].Set(node_d.x,				node_d.y,				node_d.z);
+			arr_tri[1].Set(node_d.x+arr_len*0.3,	node_d.y+arr_len*0.3,	node_d.z-arr_len);
+			arr_tri[2].Set(node_d.x+arr_len*0.3,	node_d.y-arr_len*0.3,	node_d.z-arr_len);
+			arr_tri[3].Set(node_d.x-arr_len*0.3,	node_d.y-arr_len*0.3,	node_d.z-arr_len);
+			arr_tri[4].Set(node_d.x-arr_len*0.3,	node_d.y+arr_len*0.3,	node_d.z-arr_len);
+			
+			if(m_bLocalValue)
+				for(int i=1; i<5; i++)
+					RotatebyLocalCoord(key_node,node_d,arr_tri[i]);
+				
+				for (i=0;i<4;i++) {
+					polygon = new CList <C3DPoint, C3DPoint>;
+					polygon->AddTail(arr_tri[0]);
+					polygon->AddTail(arr_tri[1+i]);
+					if (i == 3)
+						polygon->AddTail(arr_tri[1]);
+					else
+						polygon->AddTail(arr_tri[2+i]);
+					poly_list.Add(polygon);
+				}
+				polygon = new CList <C3DPoint, C3DPoint>;
+				for (i=1;i<5;i++)
+					polygon->AddTail(arr_tri[i]);
+				poly_list.Add(polygon);
+				
+				arr_ln[0].Set(node_d.x, node_d.y, node_d.z-arr_len);
+				arr_ln[1].Set(node_d.x, node_d.y, node_d.z-arr_len-ln_len);
+				
+				if(m_bLocalValue)
+					for(int i=0; i<2; i++)
+						RotatebyLocalCoord(key_node,node_d,arr_ln[i]);
+					
+					polygon = new CList <C3DPoint, C3DPoint>;
+					polygon->AddTail(arr_ln[0]);
+					polygon->AddTail(arr_ln[1]);
+					poly_list.Add(polygon);
+		}
+		break;
+	case REACTION_COMPONENT_MX:
+	case REACTION_COMPONENT_W:
+		{
+			is_moment = TRUE;
+			
+			arr_tri[0].Set(node_d.x,			node_d.y,				node_d.z);
+			arr_tri[1].Set(node_d.x-arr_len,	node_d.y+arr_len*0.3,	node_d.z+arr_len*0.3);
+			arr_tri[2].Set(node_d.x-arr_len,	node_d.y+arr_len*0.3,	node_d.z-arr_len*0.3);
+			arr_tri[3].Set(node_d.x-arr_len,	node_d.y-arr_len*0.3,	node_d.z-arr_len*0.3);
+			arr_tri[4].Set(node_d.x-arr_len,	node_d.y-arr_len*0.3,	node_d.z+arr_len*0.3);
+			
+			if(m_bLocalValue)
+				for(int i=1; i<5; i++)
+					RotatebyLocalCoord(key_node,node_d,arr_tri[i]);
+				
+				for (i=0;i<4;i++) {
+					polygon = new CList <C3DPoint, C3DPoint>;
+					polygon->AddTail(arr_tri[0]);
+					polygon->AddTail(arr_tri[1+i]);
+					if (i == 3)
+						polygon->AddTail(arr_tri[1]);
+					else
+						polygon->AddTail(arr_tri[2+i]);
+					poly_list.Add(polygon);
+				}
+				polygon = new CList <C3DPoint, C3DPoint>;
+				for (i=1;i<5;i++)
+					polygon->AddTail(arr_tri[i]);
+				poly_list.Add(polygon);
+				
+				arr_tri[5].Set(node_d.x-arr_len,	node_d.y,				node_d.z);
+				arr_tri[6].Set(node_d.x-arr_len*2,	node_d.y+arr_len*0.3,	node_d.z+arr_len*0.3);
+				arr_tri[7].Set(node_d.x-arr_len*2,	node_d.y+arr_len*0.3,	node_d.z-arr_len*0.3);
+				arr_tri[8].Set(node_d.x-arr_len*2,	node_d.y-arr_len*0.3,	node_d.z-arr_len*0.3);
+				arr_tri[9].Set(node_d.x-arr_len*2,	node_d.y-arr_len*0.3,	node_d.z+arr_len*0.3);
+				
+				if(m_bLocalValue)
+					for(int i=5; i<10; i++)
+						RotatebyLocalCoord(key_node,node_d,arr_tri[i]);
+					
+					for (i=0;i<4;i++) {
+						polygon = new CList <C3DPoint, C3DPoint>;
+						polygon->AddTail(arr_tri[5]);
+						polygon->AddTail(arr_tri[6+i]);
+						if (i == 3)
+							polygon->AddTail(arr_tri[6]);
+						else
+							polygon->AddTail(arr_tri[7+i]);
+						poly_list.Add(polygon);
+					}
+					polygon = new CList <C3DPoint, C3DPoint>;
+					for (i=6;i<10;i++)
+						polygon->AddTail(arr_tri[i]);
+					poly_list.Add(polygon);
+					
+					arr_ln[0].Set(node_d.x-arr_len*2,			node_d.y, node_d.z);
+					arr_ln[1].Set(node_d.x-arr_len*2-ln_len,	node_d.y, node_d.z);
+					
+					if(m_bLocalValue)
+						for(int i=0; i<2; i++)
+							RotatebyLocalCoord(key_node,node_d,arr_ln[i]);
+						
+						polygon = new CList <C3DPoint, C3DPoint>;
+						polygon->AddTail(arr_ln[0]);
+						polygon->AddTail(arr_ln[1]);
+						poly_list.Add(polygon);
+		}
+		break;
+	case REACTION_COMPONENT_MY:
+		{
+			is_moment = TRUE;
+			
+			arr_tri[0].Set(node_d.x,				node_d.y,			node_d.z);
+			arr_tri[1].Set(node_d.x+arr_len*0.3,	node_d.y-arr_len,	node_d.z+arr_len*0.3);
+			arr_tri[2].Set(node_d.x+arr_len*0.3,	node_d.y-arr_len,	node_d.z-arr_len*0.3);
+			arr_tri[3].Set(node_d.x-arr_len*0.3,	node_d.y-arr_len,	node_d.z-arr_len*0.3);
+			arr_tri[4].Set(node_d.x-arr_len*0.3,	node_d.y-arr_len,	node_d.z+arr_len*0.3);
+			
+			if(m_bLocalValue)
+				for(int i=1; i<5; i++)
+					RotatebyLocalCoord(key_node,node_d,arr_tri[i]);
+				
+				for (i=0;i<4;i++) {
+					polygon = new CList <C3DPoint, C3DPoint>;
+					polygon->AddTail(arr_tri[0]);
+					polygon->AddTail(arr_tri[1+i]);
+					if (i == 3)
+						polygon->AddTail(arr_tri[1]);
+					else
+						polygon->AddTail(arr_tri[2+i]);
+					poly_list.Add(polygon);
+				}
+				polygon = new CList <C3DPoint, C3DPoint>;
+				for (i=1;i<5;i++)
+					polygon->AddTail(arr_tri[i]);
+				poly_list.Add(polygon);
+				
+				arr_tri[5].Set(node_d.x,				node_d.y-arr_len,	node_d.z);
+				arr_tri[6].Set(node_d.x+arr_len*0.3,	node_d.y-arr_len*2,	node_d.z+arr_len*0.3);
+				arr_tri[7].Set(node_d.x+arr_len*0.3,	node_d.y-arr_len*2,	node_d.z-arr_len*0.3);
+				arr_tri[8].Set(node_d.x-arr_len*0.3,	node_d.y-arr_len*2,	node_d.z-arr_len*0.3);
+				arr_tri[9].Set(node_d.x-arr_len*0.3,	node_d.y-arr_len*2,	node_d.z+arr_len*0.3);
+				
+				if(m_bLocalValue)
+					for(int i=5; i<10; i++)
+						RotatebyLocalCoord(key_node,node_d,arr_tri[i]);
+					
+					for (i=0;i<4;i++) {
+						polygon = new CList <C3DPoint, C3DPoint>;
+						polygon->AddTail(arr_tri[5]);
+						polygon->AddTail(arr_tri[6+i]);
+						if (i == 3)
+							polygon->AddTail(arr_tri[6]);
+						else
+							polygon->AddTail(arr_tri[7+i]);
+						poly_list.Add(polygon);
+					}
+					polygon = new CList <C3DPoint, C3DPoint>;
+					for (i=6;i<10;i++)
+						polygon->AddTail(arr_tri[i]);
+					poly_list.Add(polygon);
+					
+					arr_ln[0].Set(node_d.x, node_d.y-arr_len*2,			node_d.z);
+					arr_ln[1].Set(node_d.x, node_d.y-arr_len*2-ln_len,	node_d.z);
+					
+					if(m_bLocalValue)
+						for(int i=0; i<2; i++)
+							RotatebyLocalCoord(key_node,node_d,arr_ln[i]);
+						
+						polygon = new CList <C3DPoint, C3DPoint>;
+						polygon->AddTail(arr_ln[0]);
+						polygon->AddTail(arr_ln[1]);
+						poly_list.Add(polygon);
+		}
+		break;
+	case REACTION_COMPONENT_MZ:
+		{
+			is_moment = TRUE;
+			
+			arr_tri[0].Set(node_d.x,				node_d.y,				node_d.z);
+			arr_tri[1].Set(node_d.x+arr_len*0.3,	node_d.y+arr_len*0.3,	node_d.z-arr_len);
+			arr_tri[2].Set(node_d.x+arr_len*0.3,	node_d.y-arr_len*0.3,	node_d.z-arr_len);
+			arr_tri[3].Set(node_d.x-arr_len*0.3,	node_d.y-arr_len*0.3,	node_d.z-arr_len);
+			arr_tri[4].Set(node_d.x-arr_len*0.3,	node_d.y+arr_len*0.3,	node_d.z-arr_len);
+			
+			if(m_bLocalValue)
+				for(int i=1; i<5; i++)
+					RotatebyLocalCoord(key_node,node_d,arr_tri[i]);
+				
+				for (i=0;i<4;i++) {
+					polygon = new CList <C3DPoint, C3DPoint>;
+					polygon->AddTail(arr_tri[0]);
+					polygon->AddTail(arr_tri[1+i]);
+					if (i == 3)
+						polygon->AddTail(arr_tri[1]);
+					else
+						polygon->AddTail(arr_tri[2+i]);
+					poly_list.Add(polygon);
+				}
+				polygon = new CList <C3DPoint, C3DPoint>;
+				for (i=1;i<5;i++)
+					polygon->AddTail(arr_tri[i]);
+				poly_list.Add(polygon);
+				
+				arr_tri[5].Set(node_d.x,				node_d.y,				node_d.z-arr_len);
+				arr_tri[6].Set(node_d.x+arr_len*0.3,	node_d.y+arr_len*0.3,	node_d.z-arr_len*2);
+				arr_tri[7].Set(node_d.x+arr_len*0.3,	node_d.y-arr_len*0.3,	node_d.z-arr_len*2);
+				arr_tri[8].Set(node_d.x-arr_len*0.3,	node_d.y-arr_len*0.3,	node_d.z-arr_len*2);
+				arr_tri[9].Set(node_d.x-arr_len*0.3,	node_d.y+arr_len*0.3,	node_d.z-arr_len*2);
+				
+				if(m_bLocalValue)
+					for(int i=5; i<10; i++)
+						RotatebyLocalCoord(key_node,node_d,arr_tri[i]);
+					
+					for (i=0;i<4;i++) {
+						polygon = new CList <C3DPoint, C3DPoint>;
+						polygon->AddTail(arr_tri[5]);
+						polygon->AddTail(arr_tri[6+i]);
+						if (i == 3)
+							polygon->AddTail(arr_tri[6]);
+						else
+							polygon->AddTail(arr_tri[7+i]);
+						poly_list.Add(polygon);
+					}
+					polygon = new CList <C3DPoint, C3DPoint>;
+					for (i=6;i<10;i++)
+						polygon->AddTail(arr_tri[i]);
+					poly_list.Add(polygon);
+					
+					arr_ln[0].Set(node_d.x, node_d.y, node_d.z-arr_len*2);
+					arr_ln[1].Set(node_d.x, node_d.y, node_d.z-arr_len*2-ln_len);
+					
+					if(m_bLocalValue)
+						for(int i=0; i<2; i++)
+							RotatebyLocalCoord(key_node,node_d,arr_ln[i]);
+						
+						polygon = new CList <C3DPoint, C3DPoint>;
+						polygon->AddTail(arr_ln[0]);
+						polygon->AddTail(arr_ln[1]);
+						poly_list.Add(polygon);
+		}
+		break;
+	}
+}
+
+//----------------------------------------------------------------------------------------
+// INIT : 2003.9.23. by KYE-HONG
+// FUNC : 반력의 Arrow Line위치를 계산해온다 
+//----------------------------------------------------------------------------------------
+void  CReactionEngine::MakeReactionArrowLine(T_NODE_K key_node,T_NODE_D &node_d, int comp, 
+																						double arr_len, double ln_len,CArray<C3DPoint,C3DPoint&> &arLine)
+{
+	//I_GPSModel	*gm=(I_GPSModel *) m_pGPSModel;
+	DECLARE_GPSMD();
+	int			  i;
+		
+	arLine.RemoveAll();
+	arLine.SetSize(2);
+	switch(comp) 
+	{
+	case REACTION_COMPONENT_FX:
+		arLine[0].Set(node_d.x-arr_len,			    node_d.y, node_d.z);
+		arLine[1].Set(node_d.x-arr_len-ln_len,	node_d.y, node_d.z);
+		if(m_bLocalValue)for(i=0; i<2; i++)
+			RotatebyLocalCoord(key_node,node_d,arLine[i]);
+		break;
+
+	case REACTION_COMPONENT_FY:
+		arLine[0].Set(node_d.x, node_d.y-arr_len,			    node_d.z);
+		arLine[1].Set(node_d.x, node_d.y-arr_len-ln_len,	node_d.z);
+
+		if(m_bLocalValue)for(i=0; i<2; i++)
+				RotatebyLocalCoord(key_node,node_d,arLine[i]);
+		break;
+
+	case REACTION_COMPONENT_FZ:
+		arLine[0].Set(node_d.x, node_d.y, node_d.z-arr_len);
+		arLine[1].Set(node_d.x, node_d.y, node_d.z-arr_len-ln_len);
+
+		if(m_bLocalValue)for(i=0; i<2; i++)
+			RotatebyLocalCoord(key_node,node_d,arLine[i]);
+		break;
+
+	case REACTION_COMPONENT_MX:
+	case REACTION_COMPONENT_W:
+		arLine[0].Set(node_d.x-arr_len*2,			    node_d.y, node_d.z);
+		arLine[1].Set(node_d.x-arr_len*2-ln_len,	node_d.y, node_d.z);
+
+		if(m_bLocalValue)for(i=0; i<2; i++)
+			RotatebyLocalCoord(key_node,node_d,arLine[i]);
+		break;
+
+	case REACTION_COMPONENT_MY:
+	  arLine[0].Set(node_d.x, node_d.y-arr_len*2,			node_d.z);
+		arLine[1].Set(node_d.x, node_d.y-arr_len*2-ln_len,	node_d.z);
+
+		if(m_bLocalValue)for(i=0; i<2; i++)
+			RotatebyLocalCoord(key_node,node_d,arLine[i]);
+		break;
+
+	case REACTION_COMPONENT_MZ:
+	  arLine[0].Set(node_d.x, node_d.y, node_d.z-arr_len*2);
+		arLine[1].Set(node_d.x, node_d.y, node_d.z-arr_len*2-ln_len);
+
+		if(m_bLocalValue)
+			for(i=0; i<2; i++)RotatebyLocalCoord(key_node,node_d,arLine[i]);
+		break;
+	}
+}
+
+void CReactionEngine::DoComponentReaction(T_NODE_K key_node,T_NODE_D &node_d, int comp, double arr_len, double ln_len,
+										  CArray <CList <C3DPoint, C3DPoint> *, CList <C3DPoint, C3DPoint> *> &poly_list,
+										  double val,
+										  CArray <double, double &> &val_list)
+{
+	I_GPSModel	*gm=(I_GPSModel *) m_pGPSModel;
+	C3DPoint	arr_tri[10], arr_ln[2];
+	int			i;
+	BOOL		is_moment;
+
+	CList <C3DPoint, C3DPoint>	*polygon;
+
+	switch (comp) {
+		case REACTION_COMPONENT_FX:
+			{
+				is_moment = FALSE;
+				
+				arr_tri[0].Set(node_d.x,			node_d.y,				node_d.z);
+				arr_tri[1].Set(node_d.x-arr_len,	node_d.y+arr_len*0.3,	node_d.z+arr_len*0.3);
+				arr_tri[2].Set(node_d.x-arr_len,	node_d.y+arr_len*0.3,	node_d.z-arr_len*0.3);
+				arr_tri[3].Set(node_d.x-arr_len,	node_d.y-arr_len*0.3,	node_d.z-arr_len*0.3);
+				arr_tri[4].Set(node_d.x-arr_len,	node_d.y-arr_len*0.3,	node_d.z+arr_len*0.3);
+				
+				if(m_bLocalValue)
+					for(int i=1; i<5; i++)
+						RotatebyLocalCoord(key_node,node_d,arr_tri[i]);
+					
+					for (i=0;i<4;i++) {
+						polygon = new CList <C3DPoint, C3DPoint>;
+						polygon->AddTail(arr_tri[0]);
+						polygon->AddTail(arr_tri[1+i]);
+						if (i == 3)
+							polygon->AddTail(arr_tri[1]);
+						else
+							polygon->AddTail(arr_tri[2+i]);
+						poly_list.Add(polygon);
+						val_list.Add(val);
+					}
+					polygon = new CList <C3DPoint, C3DPoint>;
+					for (i=1;i<5;i++)
+						polygon->AddTail(arr_tri[i]);
+					poly_list.Add(polygon);
+					val_list.Add(val);
+					
+					arr_ln[0].Set(node_d.x-arr_len,			node_d.y, node_d.z);
+					arr_ln[1].Set(node_d.x-arr_len-ln_len,	node_d.y, node_d.z);
+					
+					if(m_bLocalValue)
+						for(int i=0; i<2; i++)
+							RotatebyLocalCoord(key_node,node_d,arr_ln[i]);
+						
+						polygon = new CList <C3DPoint, C3DPoint>;
+						polygon->AddTail(arr_ln[0]);
+						polygon->AddTail(arr_ln[1]);
+						poly_list.Add(polygon);
+						val_list.Add(val);
+			}
+			break;
+		case REACTION_COMPONENT_FY:
+			{
+				is_moment = FALSE;
+				
+				arr_tri[0].Set(node_d.x,				node_d.y,			node_d.z);
+				arr_tri[1].Set(node_d.x+arr_len*0.3,	node_d.y-arr_len,	node_d.z+arr_len*0.3);
+				arr_tri[2].Set(node_d.x+arr_len*0.3,	node_d.y-arr_len,	node_d.z-arr_len*0.3);
+				arr_tri[3].Set(node_d.x-arr_len*0.3,	node_d.y-arr_len,	node_d.z-arr_len*0.3);
+				arr_tri[4].Set(node_d.x-arr_len*0.3,	node_d.y-arr_len,	node_d.z+arr_len*0.3);
+				
+				if(m_bLocalValue)
+					for(int i=1; i<5; i++)
+						RotatebyLocalCoord(key_node,node_d,arr_tri[i]);
+					
+					
+					for (i=0;i<4;i++) {
+						polygon = new CList <C3DPoint, C3DPoint>;
+						polygon->AddTail(arr_tri[0]);
+						polygon->AddTail(arr_tri[1+i]);
+						if (i == 3)
+							polygon->AddTail(arr_tri[1]);
+						else
+							polygon->AddTail(arr_tri[2+i]);
+						poly_list.Add(polygon);
+						val_list.Add(val);
+					}
+					polygon = new CList <C3DPoint, C3DPoint>;
+					for (i=1;i<5;i++)
+						polygon->AddTail(arr_tri[i]);
+					poly_list.Add(polygon);
+					val_list.Add(val);
+					
+					arr_ln[0].Set(node_d.x, node_d.y-arr_len,			node_d.z);
+					arr_ln[1].Set(node_d.x, node_d.y-arr_len-ln_len,	node_d.z);
+					
+					if(m_bLocalValue)
+						for(int i=0; i<2; i++)
+							RotatebyLocalCoord(key_node,node_d,arr_ln[i]);
+						
+						polygon = new CList <C3DPoint, C3DPoint>;
+						polygon->AddTail(arr_ln[0]);
+						polygon->AddTail(arr_ln[1]);
+						poly_list.Add(polygon);
+						val_list.Add(val);
+			}
+			break;
+		case REACTION_COMPONENT_FZ:
+			{
+				is_moment = FALSE;
+				
+				arr_tri[0].Set(node_d.x,				node_d.y,				node_d.z);
+				arr_tri[1].Set(node_d.x+arr_len*0.3,	node_d.y+arr_len*0.3,	node_d.z-arr_len);
+				arr_tri[2].Set(node_d.x+arr_len*0.3,	node_d.y-arr_len*0.3,	node_d.z-arr_len);
+				arr_tri[3].Set(node_d.x-arr_len*0.3,	node_d.y-arr_len*0.3,	node_d.z-arr_len);
+				arr_tri[4].Set(node_d.x-arr_len*0.3,	node_d.y+arr_len*0.3,	node_d.z-arr_len);
+				
+				if(m_bLocalValue)
+					for(int i=1; i<5; i++)
+						RotatebyLocalCoord(key_node,node_d,arr_tri[i]);
+					
+					
+					for (i=0;i<4;i++) {
+						polygon = new CList <C3DPoint, C3DPoint>;
+						polygon->AddTail(arr_tri[0]);
+						polygon->AddTail(arr_tri[1+i]);
+						if (i == 3)
+							polygon->AddTail(arr_tri[1]);
+						else
+							polygon->AddTail(arr_tri[2+i]);
+						poly_list.Add(polygon);
+						val_list.Add(val);
+					}
+					polygon = new CList <C3DPoint, C3DPoint>;
+					for (i=1;i<5;i++)
+						polygon->AddTail(arr_tri[i]);
+					poly_list.Add(polygon);
+					val_list.Add(val);
+					
+					arr_ln[0].Set(node_d.x, node_d.y, node_d.z-arr_len);
+					arr_ln[1].Set(node_d.x, node_d.y, node_d.z-arr_len-ln_len);
+					
+					if(m_bLocalValue)
+						for(int i=0; i<2; i++)
+							RotatebyLocalCoord(key_node,node_d,arr_ln[i]);
+						
+						polygon = new CList <C3DPoint, C3DPoint>;
+						polygon->AddTail(arr_ln[0]);
+						polygon->AddTail(arr_ln[1]);
+						poly_list.Add(polygon);
+						val_list.Add(val);
+			}
+			break;
+		case REACTION_COMPONENT_MX:
+		case REACTION_COMPONENT_W:
+			{
+				is_moment = TRUE;
+				
+				arr_tri[0].Set(node_d.x,			node_d.y,				node_d.z);
+				arr_tri[1].Set(node_d.x-arr_len,	node_d.y+arr_len*0.3,	node_d.z+arr_len*0.3);
+				arr_tri[2].Set(node_d.x-arr_len,	node_d.y+arr_len*0.3,	node_d.z-arr_len*0.3);
+				arr_tri[3].Set(node_d.x-arr_len,	node_d.y-arr_len*0.3,	node_d.z-arr_len*0.3);
+				arr_tri[4].Set(node_d.x-arr_len,	node_d.y-arr_len*0.3,	node_d.z+arr_len*0.3);
+				
+				if(m_bLocalValue)
+					for(int i=1; i<5; i++)
+						RotatebyLocalCoord(key_node,node_d,arr_tri[i]);
+					
+					
+					for (i=0;i<4;i++) {
+						polygon = new CList <C3DPoint, C3DPoint>;
+						polygon->AddTail(arr_tri[0]);
+						polygon->AddTail(arr_tri[1+i]);
+						if (i == 3)
+							polygon->AddTail(arr_tri[1]);
+						else
+							polygon->AddTail(arr_tri[2+i]);
+						poly_list.Add(polygon);
+						val_list.Add(val);
+					}
+					polygon = new CList <C3DPoint, C3DPoint>;
+					for (i=1;i<5;i++)
+						polygon->AddTail(arr_tri[i]);
+					poly_list.Add(polygon);
+					val_list.Add(val);
+					
+					arr_tri[5].Set(node_d.x-arr_len,	node_d.y,				node_d.z);
+					arr_tri[6].Set(node_d.x-arr_len*2,	node_d.y+arr_len*0.3,	node_d.z+arr_len*0.3);
+					arr_tri[7].Set(node_d.x-arr_len*2,	node_d.y+arr_len*0.3,	node_d.z-arr_len*0.3);
+					arr_tri[8].Set(node_d.x-arr_len*2,	node_d.y-arr_len*0.3,	node_d.z-arr_len*0.3);
+					arr_tri[9].Set(node_d.x-arr_len*2,	node_d.y-arr_len*0.3,	node_d.z+arr_len*0.3);
+					
+					if(m_bLocalValue)
+						for(int i=5; i<10; i++)
+							RotatebyLocalCoord(key_node,node_d,arr_tri[i]);
+						
+						
+						for (i=0;i<4;i++) {
+							polygon = new CList <C3DPoint, C3DPoint>;
+							polygon->AddTail(arr_tri[5]);
+							polygon->AddTail(arr_tri[6+i]);
+							if (i == 3)
+								polygon->AddTail(arr_tri[6]);
+							else
+								polygon->AddTail(arr_tri[7+i]);
+							poly_list.Add(polygon);
+							val_list.Add(val);
+						}
+						polygon = new CList <C3DPoint, C3DPoint>;
+						for (i=6;i<10;i++)
+							polygon->AddTail(arr_tri[i]);
+						poly_list.Add(polygon);
+						val_list.Add(val);
+						
+						arr_ln[0].Set(node_d.x-arr_len*2,			node_d.y, node_d.z);
+						arr_ln[1].Set(node_d.x-arr_len*2-ln_len,	node_d.y, node_d.z);
+						
+						if(m_bLocalValue)
+							for(int i=0; i<2; i++)
+								RotatebyLocalCoord(key_node,node_d,arr_ln[i]);
+							
+							polygon = new CList <C3DPoint, C3DPoint>;
+							polygon->AddTail(arr_ln[0]);
+							polygon->AddTail(arr_ln[1]);
+							poly_list.Add(polygon);
+							val_list.Add(val);
+			}
+			break;
+		case REACTION_COMPONENT_MY:
+			{
+				is_moment = TRUE;
+				
+				arr_tri[0].Set(node_d.x,				node_d.y,			node_d.z);
+				arr_tri[1].Set(node_d.x+arr_len*0.3,	node_d.y-arr_len,	node_d.z+arr_len*0.3);
+				arr_tri[2].Set(node_d.x+arr_len*0.3,	node_d.y-arr_len,	node_d.z-arr_len*0.3);
+				arr_tri[3].Set(node_d.x-arr_len*0.3,	node_d.y-arr_len,	node_d.z-arr_len*0.3);
+				arr_tri[4].Set(node_d.x-arr_len*0.3,	node_d.y-arr_len,	node_d.z+arr_len*0.3);
+				
+				if(m_bLocalValue)
+					for(int i=1; i<5; i++)
+						RotatebyLocalCoord(key_node,node_d,arr_tri[i]);
+					
+					
+					for (i=0;i<4;i++) {
+						polygon = new CList <C3DPoint, C3DPoint>;
+						polygon->AddTail(arr_tri[0]);
+						polygon->AddTail(arr_tri[1+i]);
+						if (i == 3)
+							polygon->AddTail(arr_tri[1]);
+						else
+							polygon->AddTail(arr_tri[2+i]);
+						poly_list.Add(polygon);
+						val_list.Add(val);
+					}
+					polygon = new CList <C3DPoint, C3DPoint>;
+					for (i=1;i<5;i++)
+						polygon->AddTail(arr_tri[i]);
+					poly_list.Add(polygon);
+					val_list.Add(val);
+					
+					arr_tri[5].Set(node_d.x,				node_d.y-arr_len,	node_d.z);
+					arr_tri[6].Set(node_d.x+arr_len*0.3,	node_d.y-arr_len*2,	node_d.z+arr_len*0.3);
+					arr_tri[7].Set(node_d.x+arr_len*0.3,	node_d.y-arr_len*2,	node_d.z-arr_len*0.3);
+					arr_tri[8].Set(node_d.x-arr_len*0.3,	node_d.y-arr_len*2,	node_d.z-arr_len*0.3);
+					arr_tri[9].Set(node_d.x-arr_len*0.3,	node_d.y-arr_len*2,	node_d.z+arr_len*0.3);
+					
+					if(m_bLocalValue)
+						for(int i=5; i<10; i++)
+							RotatebyLocalCoord(key_node,node_d,arr_tri[i]);
+						
+						
+						for (i=0;i<4;i++) {
+							polygon = new CList <C3DPoint, C3DPoint>;
+							polygon->AddTail(arr_tri[5]);
+							polygon->AddTail(arr_tri[6+i]);
+							if (i == 3)
+								polygon->AddTail(arr_tri[6]);
+							else
+								polygon->AddTail(arr_tri[7+i]);
+							poly_list.Add(polygon);
+							val_list.Add(val);
+						}
+						polygon = new CList <C3DPoint, C3DPoint>;
+						for (i=6;i<10;i++)
+							polygon->AddTail(arr_tri[i]);
+						poly_list.Add(polygon);
+						val_list.Add(val);
+						
+						arr_ln[0].Set(node_d.x, node_d.y-arr_len*2,			node_d.z);
+						arr_ln[1].Set(node_d.x, node_d.y-arr_len*2-ln_len,	node_d.z);
+						
+						if(m_bLocalValue)
+							for(int i=0; i<2; i++)
+								RotatebyLocalCoord(key_node,node_d,arr_ln[i]);
+							
+							polygon = new CList <C3DPoint, C3DPoint>;
+							polygon->AddTail(arr_ln[0]);
+							polygon->AddTail(arr_ln[1]);
+							poly_list.Add(polygon);
+							val_list.Add(val);
+			}
+			break;
+		case REACTION_COMPONENT_MZ:
+			{
+				is_moment = TRUE;
+				
+				arr_tri[0].Set(node_d.x,				node_d.y,				node_d.z);
+				arr_tri[1].Set(node_d.x+arr_len*0.3,	node_d.y+arr_len*0.3,	node_d.z-arr_len);
+				arr_tri[2].Set(node_d.x+arr_len*0.3,	node_d.y-arr_len*0.3,	node_d.z-arr_len);
+				arr_tri[3].Set(node_d.x-arr_len*0.3,	node_d.y-arr_len*0.3,	node_d.z-arr_len);
+				arr_tri[4].Set(node_d.x-arr_len*0.3,	node_d.y+arr_len*0.3,	node_d.z-arr_len);
+				
+				if(m_bLocalValue)
+					for(int i=1; i<5; i++)
+						RotatebyLocalCoord(key_node,node_d,arr_tri[i]);
+					
+					
+					for (i=0;i<4;i++) {
+						polygon = new CList <C3DPoint, C3DPoint>;
+						polygon->AddTail(arr_tri[0]);
+						polygon->AddTail(arr_tri[1+i]);
+						if (i == 3)
+							polygon->AddTail(arr_tri[1]);
+						else
+							polygon->AddTail(arr_tri[2+i]);
+						poly_list.Add(polygon);
+						val_list.Add(val);
+					}
+					polygon = new CList <C3DPoint, C3DPoint>;
+					for (i=1;i<5;i++)
+						polygon->AddTail(arr_tri[i]);
+					poly_list.Add(polygon);
+					val_list.Add(val);
+					
+					arr_tri[5].Set(node_d.x,				node_d.y,				node_d.z-arr_len);
+					arr_tri[6].Set(node_d.x+arr_len*0.3,	node_d.y+arr_len*0.3,	node_d.z-arr_len*2);
+					arr_tri[7].Set(node_d.x+arr_len*0.3,	node_d.y-arr_len*0.3,	node_d.z-arr_len*2);
+					arr_tri[8].Set(node_d.x-arr_len*0.3,	node_d.y-arr_len*0.3,	node_d.z-arr_len*2);
+					arr_tri[9].Set(node_d.x-arr_len*0.3,	node_d.y+arr_len*0.3,	node_d.z-arr_len*2);
+					
+					if(m_bLocalValue)
+						for(int i=5; i<10; i++)
+							RotatebyLocalCoord(key_node,node_d,arr_tri[i]);
+						
+						
+						for (i=0;i<4;i++) {
+							polygon = new CList <C3DPoint, C3DPoint>;
+							polygon->AddTail(arr_tri[5]);
+							polygon->AddTail(arr_tri[6+i]);
+							if (i == 3)
+								polygon->AddTail(arr_tri[6]);
+							else
+								polygon->AddTail(arr_tri[7+i]);
+							poly_list.Add(polygon);
+							val_list.Add(val);
+						}
+						polygon = new CList <C3DPoint, C3DPoint>;
+						for (i=6;i<10;i++)
+							polygon->AddTail(arr_tri[i]);
+						poly_list.Add(polygon);
+						val_list.Add(val);
+						
+						arr_ln[0].Set(node_d.x, node_d.y, node_d.z-arr_len*2);
+						arr_ln[1].Set(node_d.x, node_d.y, node_d.z-arr_len*2-ln_len);
+						
+						if(m_bLocalValue)
+							for(int i=0; i<2; i++)
+								RotatebyLocalCoord(key_node,node_d,arr_ln[i]);
+							
+							polygon = new CList <C3DPoint, C3DPoint>;
+							polygon->AddTail(arr_ln[0]);
+							polygon->AddTail(arr_ln[1]);
+							poly_list.Add(polygon);
+							val_list.Add(val);
+			}
+			break;
+	}
+}
+
+#if defined(__OLD_OUTPUT_VALUE)
+void CReactionEngine::OutputReactionNumber(CDC *pDC)
+{
+	DECLARE_GPSMD();
+	DECLARE_DPTTX();
+
+	
+	int					i, node_num;
+	T_NODE_D		ndata;
+	C3DPoint		node_p;
+	CPoint			text_p;
+	TCHAR				fmt_str[10], text_str[512];
+	//CFont				ft, *old_ft;
+
+	if(!m_bReacDataSet)return;
+	
+	//gm->SetNumberFontNodeOrientation(0);
+	//ft.CreatePointFontIndirect(&gm->m_NumberFontNode, pDC);
+	//old_ft = (CFont *) pDC->SelectObject(&ft);
+
+	double arr_len,ln_len;
+	if(fabs(m_MaxReacVal) > fabs(m_MinReacVal)) 
+		arr_len = fabs(m_MaxReacVal)*m_ReacAdjustFactor*m_ReacScaleFactor*0.35;
+	else
+		arr_len = fabs(m_MinReacVal)*m_ReacAdjustFactor*m_ReacScaleFactor*0.35;
+
+	if(pTX->m_bNumberOpaqueNode) pDC->SetBkMode(OPAQUE);
+	else		                     pDC->SetBkMode(TRANSPARENT);
+	pDC->SetTextColor(pTX->m_NumberTextColorNode);
+	pDC->SetBkColor(pTX->m_NumberBackColNode);
+	pDC->SetTextAlign(TA_LEFT|TA_BOTTOM);
+
+	if(pTX->m_bNumberExponent) _stprintf(fmt_str, _T(" %s%de"), _T("%."), gm->m_NumberDecimalPoint);
+	else		                   _stprintf(fmt_str, _T(" %s%df"), _T("%."), gm->m_NumberDecimalPoint);
+
+	if(pTX->m_bNumberSelOnly) 
+	{;
+	}
+	else 
+	{
+		node_num = m_NodeKeyList.GetSize();
+		for(i=0;i<node_num;i++) 
+		{
+			if(!gm->m_pGPSCtrl->IsActiveNode(m_NodeKeyList[i]))
+				continue;
+			
+			m_pDoc->m_pAttrCtrl->GetNode(m_NodeKeyList[i], ndata);
+			
+			if(gm->m_pGPSCtrl->IsGroupFilterMode())
+			{ 
+				if(!gm->m_pGPSCtrl->CheckGroupFilterNode(m_NodeKeyList[i]))continue; 
+			}
+
+			node_p.Set(ndata.x, ndata.y, ndata.z);
+
+			int nCount;
+			switch(m_ReacComponent)
+			{
+			case REACTION_COMPONENT_FXYZ:
+			case REACTION_COMPONENT_MXYZ:
+				nCount = 3; 
+				break;
+			default:
+				nCount = 1;
+				break; 
+			}
+			
+			BOOL bInverse;
+			CFont Font,*pOldFont=NULL;
+			for(int j=0; j<nCount; j++)
+			{
+				double dReactValue;
+				CArray<C3DPoint,C3DPoint&> arLine;
+				if(m_ReacComponent == REACTION_COMPONENT_FXYZ)
+				{
+					dReactValue = CalcReacValue(REACTION_COMPONENT_FX+j, m_ReacDataList[i]);
+					if(dReactValue == 0.0)continue;
+				  ln_len = dReactValue*m_ReacAdjustFactor*m_ReacScaleFactor*1.2;
+					if(dReactValue < 0.0) MakeReactionArrowLine(m_NodeKeyList[i],ndata, REACTION_COMPONENT_FX+j, -arr_len, ln_len, arLine);
+				  else					        MakeReactionArrowLine(m_NodeKeyList[i],ndata, REACTION_COMPONENT_FX+j, arr_len, ln_len, arLine);
+
+					CPoint Node2D[2];
+					Node2D[0] = gm->Get3DPtTo2DPt(&arLine[0]);
+					Node2D[1] = gm->Get3DPtTo2DPt(&arLine[1]);
+					int nSlope;
+					bInverse = CUtilFuncs::GetSlope2Point(nSlope,Node2D[0].x,Node2D[0].y,Node2D[1].x,Node2D[1].y);
+					node_p = arLine[1];
+
+					if(bInverse)  pDC->SetTextAlign(TA_RIGHT|TA_BOTTOM);
+					else					pDC->SetTextAlign(TA_LEFT|TA_BOTTOM);
+
+					gm->SetNumberFontNodeOrientation(nSlope);
+		      Font.CreatePointFontIndirect(&gm->m_NumberFontNode, pDC);
+		      pOldFont = (CFont *) pDC->SelectObject(&Font);
+				}
+				else if(m_ReacComponent == REACTION_COMPONENT_MXYZ)
+				{
+					dReactValue = CalcReacValue(REACTION_COMPONENT_MX+j, m_ReacDataList[i]);
+					if(dReactValue == 0.0)continue;
+				  ln_len = dReactValue*m_ReacAdjustFactor*m_ReacScaleFactor*1.2;
+					if(dReactValue < 0.0) MakeReactionArrowLine(m_NodeKeyList[i],ndata, REACTION_COMPONENT_MX+j, -arr_len, ln_len, arLine);
+				  else					        MakeReactionArrowLine(m_NodeKeyList[i],ndata, REACTION_COMPONENT_MX+j, arr_len, ln_len, arLine);
+					node_p = arLine[1];
+
+					CPoint Node2D[2];
+					Node2D[0] = gm->Get3DPtTo2DPt(&arLine[0]);
+					Node2D[1] = gm->Get3DPtTo2DPt(&arLine[1]);
+					int nSlope;
+					bInverse = CUtilFuncs::GetSlope2Point(nSlope,Node2D[0].x,Node2D[0].y,Node2D[1].x,Node2D[1].y);
+					node_p = arLine[1];
+
+					if(bInverse)  pDC->SetTextAlign(TA_RIGHT|TA_BOTTOM);
+					else					pDC->SetTextAlign(TA_LEFT|TA_BOTTOM);
+
+					gm->SetNumberFontNodeOrientation(nSlope);
+		      Font.CreatePointFontIndirect(&gm->m_NumberFontNode, pDC);
+		      pOldFont = (CFont *) pDC->SelectObject(&Font);
+				}
+				else
+				{
+					dReactValue = CalcReacValue(m_ReacDataList[i]);
+
+					gm->SetNumberFontNodeOrientation(0);
+		      Font.CreatePointFontIndirect(&gm->m_NumberFontNode, pDC);
+		      pOldFont = (CFont *) pDC->SelectObject(&Font);
+				}
+
+				if(gm->m_DOPT.TX.m_bOutputMinMaxValueOnly)
+				{
+					double dLimit = (m_dMaxValue-m_dMinValue) * gm->m_DOPT.TX.m_dOutputMinMaxLimit / 100.0;
+					
+					switch(gm->m_DOPT.TX.m_nOutputMinMaxType)
+					{
+					case 0: // Min & Max
+						if((m_dMaxValue-dReactValue) <= dLimit)
+							DrawMinMaxOutputValue(pDC,node_p,fmt_str,0,dReactValue);
+						else if((dReactValue-m_dMinValue) <= dLimit)
+							DrawMinMaxOutputValue(pDC,node_p,fmt_str,1,dReactValue);
+						break;
+					case 1: // Abs Max
+						if(fabs(m_dMaxValue) >= fabs(m_dMinValue))
+						{
+							if( fabs(m_dMaxValue)-fabs(dReactValue) <= dLimit)
+								DrawMinMaxOutputValue(pDC,node_p,fmt_str,2,dReactValue);
+						}
+						else
+						{
+							if( fabs(m_dMinValue)-fabs(dReactValue) <= dLimit)
+								DrawMinMaxOutputValue(pDC,node_p,fmt_str,2,dReactValue);
+						}
+						break;
+					case 2: // Max
+						if((m_dMaxValue-dReactValue) <= dLimit)
+							DrawMinMaxOutputValue(pDC,node_p,fmt_str,0,dReactValue);
+						break;
+					case 3: // Min
+						if((dReactValue-m_dMinValue) <= dLimit)
+							DrawMinMaxOutputValue(pDC,node_p,fmt_str,1,dReactValue);
+						break;
+					}
+
+					if(pOldFont)
+					{
+						pDC->SelectObject(pOldFont);
+						Font.DeleteObject();
+						pOldFont=NULL; 
+					}
+					continue;  
+				}
+				
+				if(gm->m_bVirtualMode)text_p = gm->m_pGPSCtrl->GetWorldToWindowP2D(node_p);
+				else				          text_p = gm->m_pGPSCtrl->GetWorldToMemDCP2D(node_p);
+				
+				/*
+				if(m_ReacComponent == REACTION_COMPONENT_FXYZ)
+					_stprintf(text_str, fmt_str, CalcReacValue(REACTION_COMPONENT_FXYZ, m_ReacDataList[i]));
+				else if(m_ReacComponent == REACTION_COMPONENT_MXYZ)
+					_stprintf(text_str, fmt_str, CalcReacValue(REACTION_COMPONENT_MXYZ, m_ReacDataList[i]));
+				else
+					_stprintf(text_str, fmt_str, CalcReacValue(m_ReacDataList[i]));
+				if(text_p.x>=0 && text_p.y>=0) 
+					pDC->TextOut(text_p.x, text_p.y, text_str);
+					*/
+				if(m_ReacComponent == REACTION_COMPONENT_FXYZ)
+					_stprintf(text_str, fmt_str, dReactValue);
+				else if(m_ReacComponent == REACTION_COMPONENT_MXYZ)
+					_stprintf(text_str, fmt_str, dReactValue);
+				else
+					_stprintf(text_str, fmt_str, dReactValue);
+				if(text_p.x>=0 && text_p.y>=0) 
+					pDC->TextOut(text_p.x, text_p.y, text_str);
+
+				if(pOldFont)
+				{
+					pDC->SelectObject(pOldFont);
+					Font.DeleteObject();
+					pOldFont=NULL; 
+				}
+
+			}
+		}
+	}
+	gm->SetNumberFontNodeOrientation(0);
+
+	//pDC->SelectObject(old_ft);
+	//ft.DeleteObject();
+}
+#else
+void CReactionEngine::OutputReactionNumber(CDC* pDC)
+{
+	DECLARE_GPSMD();
+	DECLARE_DPTTX();
+
+	int					i, node_num;
+	T_NODE_D		ndata;
+	C3DPoint		node_p;
+	CPoint			text_p;
+	TCHAR				fmt_str[10], text_str[512];
+	//CFont				ft, *old_ft;
+
+	if (!m_bReacDataSet)return;
+
+	double arr_len, ln_len;
+	if (fabs(m_MaxReacVal) > fabs(m_MinReacVal))
+		arr_len = fabs(m_MaxReacVal) * m_ReacAdjustFactor * m_ReacScaleFactor * 0.35;
+	else
+		arr_len = fabs(m_MinReacVal) * m_ReacAdjustFactor * m_ReacScaleFactor * 0.35;
+
+	GPostTextOut TextOutModel;
+	TextOutModel.SetDC(pDC);
+	TextOutModel.StartReactVal();
+	TextOutModel.SettingReact(gm);
+	
+	if (pTX->m_bNumberExponent) _stprintf(fmt_str, _T(" %s%de"), _T("%."), gm->m_NumberDecimalPoint);
+	else		                   _stprintf(fmt_str, _T(" %s%df"), _T("%."), gm->m_NumberDecimalPoint);
+
+	if (pTX->m_bNumberSelOnly)
+	{
+		;
+	}
+	else
+	{
+		node_num = m_NodeKeyList.GetSize();
+		for (i = 0; i < node_num; i++)
+		{
+			if (!gm->m_pGPSCtrl->IsActiveNode(m_NodeKeyList[i]))
+				continue;
+
+			m_pDoc->m_pAttrCtrl->GetNode(m_NodeKeyList[i], ndata);
+
+			if (gm->m_pGPSCtrl->IsGroupFilterMode())
+			{
+				if (!gm->m_pGPSCtrl->CheckGroupFilterNode(m_NodeKeyList[i]))continue;
+			}
+
+			node_p.Set(ndata.x, ndata.y, ndata.z);
+
+			int nCount;
+			switch (m_ReacComponent)
+			{
+			case REACTION_COMPONENT_FXYZ:
+			case REACTION_COMPONENT_MXYZ:
+				nCount = 3;
+				break;
+			default:
+				nCount = 1;
+				break;
+			}
+
+			BOOL bInverse;
+
+			CFont Font, * pOldFont = NULL;
+			for (int j = 0; j < nCount; j++)
+			{
+				double dReactValue;
+				CArray<C3DPoint, C3DPoint&> arLine;
+				if (m_ReacComponent == REACTION_COMPONENT_FXYZ)
+				{
+					dReactValue = CalcReacValue(REACTION_COMPONENT_FX + j, m_ReacDataList[i]);
+					if (dReactValue == 0.0)continue;
+					ln_len = dReactValue * m_ReacAdjustFactor * m_ReacScaleFactor * 1.2;
+					if (dReactValue < 0.0) MakeReactionArrowLine(m_NodeKeyList[i], ndata, REACTION_COMPONENT_FX + j, -arr_len, ln_len, arLine);
+					else					        MakeReactionArrowLine(m_NodeKeyList[i], ndata, REACTION_COMPONENT_FX + j, arr_len, ln_len, arLine);
+
+					CPoint Node2D[2];
+					Node2D[0] = gm->Get3DPtTo2DPt(&arLine[0]);
+					Node2D[1] = gm->Get3DPtTo2DPt(&arLine[1]);
+					int nSlope;
+					bInverse = CUtilFuncs::GetSlope2Point(nSlope, Node2D[0].x, Node2D[0].y, Node2D[1].x, Node2D[1].y);
+					node_p = arLine[1];
+
+					if (bInverse)  TextOutModel.AlignTextBot(TA_RIGHT);
+					else			TextOutModel.AlignTextBot(TA_LEFT);
+					
+					TextOutModel.Font4React(gm, nSlope);
+				}
+				else if (m_ReacComponent == REACTION_COMPONENT_MXYZ)
+				{
+					dReactValue = CalcReacValue(REACTION_COMPONENT_MX + j, m_ReacDataList[i]);
+					if (dReactValue == 0.0)continue;
+					ln_len = dReactValue * m_ReacAdjustFactor * m_ReacScaleFactor * 1.2;
+					if (dReactValue < 0.0) MakeReactionArrowLine(m_NodeKeyList[i], ndata, REACTION_COMPONENT_MX + j, -arr_len, ln_len, arLine);
+					else					        MakeReactionArrowLine(m_NodeKeyList[i], ndata, REACTION_COMPONENT_MX + j, arr_len, ln_len, arLine);
+					node_p = arLine[1];
+
+					CPoint Node2D[2];
+					Node2D[0] = gm->Get3DPtTo2DPt(&arLine[0]);
+					Node2D[1] = gm->Get3DPtTo2DPt(&arLine[1]);
+					int nSlope;
+					bInverse = CUtilFuncs::GetSlope2Point(nSlope, Node2D[0].x, Node2D[0].y, Node2D[1].x, Node2D[1].y);
+					node_p = arLine[1];
+
+					if (bInverse)  TextOutModel.AlignTextBot(TA_RIGHT);
+					else					TextOutModel.AlignTextBot(TA_LEFT);
+
+					TextOutModel.Font4React(gm, nSlope);
+				}
+				else
+				{
+					dReactValue = CalcReacValue(m_ReacDataList[i]);
+
+					TextOutModel.Font4React(gm, 0);
+				}
+
+				if (gm->m_DOPT.TX.m_bOutputMinMaxValueOnly)
+				{
+					double dLimit = (m_dMaxValue - m_dMinValue) * gm->m_DOPT.TX.m_dOutputMinMaxLimit / 100.0;
+
+					switch (gm->m_DOPT.TX.m_nOutputMinMaxType)
+					{
+					case 0: // Min & Max
+						if ((m_dMaxValue - dReactValue) <= dLimit)
+							DrawMinMaxOutputValue(pDC, node_p, fmt_str, 0, dReactValue);
+						else if ((dReactValue - m_dMinValue) <= dLimit)
+							DrawMinMaxOutputValue(pDC, node_p, fmt_str, 1, dReactValue);
+						break;
+					case 1: // Abs Max
+						if (fabs(m_dMaxValue) >= fabs(m_dMinValue))
+						{
+							if (fabs(m_dMaxValue) - fabs(dReactValue) <= dLimit)
+								DrawMinMaxOutputValue(pDC, node_p, fmt_str, 2, dReactValue);
+						}
+						else
+						{
+							if (fabs(m_dMinValue) - fabs(dReactValue) <= dLimit)
+								DrawMinMaxOutputValue(pDC, node_p, fmt_str, 2, dReactValue);
+						}
+						break;
+					case 2: // Max
+						if ((m_dMaxValue - dReactValue) <= dLimit)
+							DrawMinMaxOutputValue(pDC, node_p, fmt_str, 0, dReactValue);
+						break;
+					case 3: // Min
+						if ((dReactValue - m_dMinValue) <= dLimit)
+							DrawMinMaxOutputValue(pDC, node_p, fmt_str, 1, dReactValue);
+						break;
+					}
+
+					if (pOldFont)
+					{
+						TextOutModel.DeleteFontFlag();
+					}
+					continue;
+				}
+
+				if (gm->m_bVirtualMode)text_p = gm->m_pGPSCtrl->GetWorldToWindowP2D(node_p);
+				else				          text_p = gm->m_pGPSCtrl->GetWorldToMemDCP2D(node_p);
+
+				/*
+				if(m_ReacComponent == REACTION_COMPONENT_FXYZ)
+					_stprintf(text_str, fmt_str, CalcReacValue(REACTION_COMPONENT_FXYZ, m_ReacDataList[i]));
+				else if(m_ReacComponent == REACTION_COMPONENT_MXYZ)
+					_stprintf(text_str, fmt_str, CalcReacValue(REACTION_COMPONENT_MXYZ, m_ReacDataList[i]));
+				else
+					_stprintf(text_str, fmt_str, CalcReacValue(m_ReacDataList[i]));
+				if(text_p.x>=0 && text_p.y>=0)
+					pDC->TextOut(text_p.x, text_p.y, text_str);
+					*/
+				if (m_ReacComponent == REACTION_COMPONENT_FXYZ)
+					_stprintf(text_str, fmt_str, dReactValue);
+				else if (m_ReacComponent == REACTION_COMPONENT_MXYZ)
+					_stprintf(text_str, fmt_str, dReactValue);
+				else
+					_stprintf(text_str, fmt_str, dReactValue);
+				if (text_p.x >= 0 && text_p.y >= 0)
+					TextOutModel.TextOutReact(text_p.x, text_p.y, text_str);
+
+				if (pOldFont)
+				{
+					TextOutModel.DeleteFontFlag();
+				}
+
+			}
+		}
+	}
+	gm->SetNumberFontNodeOrientation(0);
+	TextOutModel.EndReactVal();
+	//pDC->SelectObject(old_ft);
+	//ft.DeleteObject();
+}
+#endif
+
+void CReactionEngine::DrawPickedNodes(CDC *pDC)
+{
+	I_GPSModel		*gm=(I_GPSModel *) m_pGPSModel;
+	
+	int				i, node_num=m_PickedNodeList.GetSize();
+	C3DPoint		node_p;
+	CPoint			text_p;
+	CString			text_str;
+	CFont			ft, *old_ft;
+	COLORREF		node_col, focus_col;
+
+	if (node_num <= 0)
+		return;
+
+	if (gm->m_bVirtualMode) {
+		node_col = RGB(0, 0, 0);
+		focus_col = RGB(0, 0, 0);
+	}
+	else {
+		node_col = gm->m_DOPT.TX.m_NumberTextColorNode;
+		focus_col = gm->m_DOPT.TX.m_NumberTextColorNode;
+	}
+
+	gm->SetNumberFontNodeOrientation(0);
+	ft.CreatePointFontIndirect(&gm->m_NumberFontNode, pDC);
+	old_ft = (CFont *) pDC->SelectObject(&ft);
+	if (gm->m_DOPT.TX.m_bNumberOpaqueNode)
+		pDC->SetBkMode(OPAQUE);
+	else
+		pDC->SetBkMode(TRANSPARENT);
+	pDC->SetTextColor(node_col);
+	pDC->SetBkColor(gm->m_DOPT.TX.m_NumberBackColNode);
+	pDC->SetTextAlign(TA_LEFT|TA_BOTTOM);
+
+
+	for (i=0;i<node_num-1;i++) {
+		gm->RE_GetLabelPosNodeByKey(m_PickedNodeList[i], &node_p);
+		if (gm->m_bVirtualMode)
+			text_p = gm->m_pGPSCtrl->GetWorldToWindowP2D(node_p);
+		else
+			text_p = gm->m_pGPSCtrl->GetWorldToMemDCP2D(node_p);
+		text_str.Format(_T("%d"), m_PickedNodeList[i]);
+		if(text_p.x>=0 && text_p.y>=0) 
+		  pDC->TextOut(text_p.x, text_p.y, text_str);
+
+		if (gm->m_bVirtualMode)
+			gm->m_pGPSCtrl->DrawNodeInClientWindow(pDC, node_p);
+		else
+			gm->m_pGPSCtrl->DrawNode(pDC, node_p);
+	}
+
+
+//	DrawNodeReacValueWindow(pDC, m_PickedNodeList[i]);
+
+	pDC->SetTextColor(focus_col);
+	gm->RE_GetLabelPosNodeByKey(m_PickedNodeList[i], &node_p);
+
+	if (gm->m_bVirtualMode)
+		text_p = gm->m_pGPSCtrl->GetWorldToWindowP2D(node_p);
+	else
+		text_p = gm->m_pGPSCtrl->GetWorldToMemDCP2D(node_p);
+
+	text_str.Format(_T("%d"), m_PickedNodeList[i]);
+	if(text_p.x>=0 && text_p.y>=0) 
+	  pDC->TextOut(text_p.x, text_p.y, text_str);
+
+	if (gm->m_bVirtualMode)
+		gm->m_pGPSCtrl->DrawNodeInClientWindow(pDC, node_p);
+	else
+		gm->m_pGPSCtrl->DrawNode(pDC, node_p);
+
+	pDC->SelectObject(old_ft);
+	ft.DeleteObject();
+
+}
+
+void CReactionEngine::DrawPickedNodeOnClientWnd(CDC *pDC)
+{
+	I_GPSModel		*gm=(I_GPSModel *) m_pGPSModel;
+	
+	int				i, node_num=m_PickedNodeList.GetSize();
+	C3DPoint		node_p;
+	CPoint			text_p;
+	CString			text_str;
+	CFont			ft, *old_ft;
+	COLORREF		node_col, focus_col;
+
+	if (node_num <= 0)
+		return;
+
+	node_col = gm->m_DOPT.TX.m_NumberTextColorNode;
+	focus_col = gm->m_DOPT.TX.m_NumberTextColorNode;
+	
+
+	gm->SetNumberFontNodeOrientation(0);
+	ft.CreatePointFontIndirect(&gm->m_NumberFontNode, pDC);
+	old_ft = (CFont *) pDC->SelectObject(&ft);
+	if (gm->m_DOPT.TX.m_bNumberOpaqueNode)
+		pDC->SetBkMode(OPAQUE);
+	else
+		pDC->SetBkMode(TRANSPARENT);
+	pDC->SetTextColor(node_col);
+	pDC->SetBkColor(gm->m_DOPT.TX.m_NumberBackColNode);
+	pDC->SetTextAlign(TA_LEFT|TA_BOTTOM);
+
+
+	for (i=0;i<node_num-1;i++) {
+		gm->RE_GetLabelPosNodeByKey(m_PickedNodeList[i], &node_p);
+		text_p = gm->m_pGPSCtrl->GetWorldToWindowP2D(node_p);
+		text_str.Format(_T("%d"), m_PickedNodeList[i]);
+		if(text_p.x>=0 && text_p.y>=0) 
+		  pDC->TextOut(text_p.x, text_p.y, text_str);
+
+		gm->m_pGPSCtrl->DrawNodeInClientWindow(pDC, node_p);
+		
+	}
+
+
+//	DrawNodeReacValueWindow(pDC, m_PickedNodeList[i]);
+
+	pDC->SetTextColor(focus_col);
+	gm->RE_GetLabelPosNodeByKey(m_PickedNodeList[i], &node_p);
+
+	text_p = gm->m_pGPSCtrl->GetWorldToWindowP2D(node_p);
+
+	text_str.Format(_T("%d"), m_PickedNodeList[i]);
+	if(text_p.x>=0 && text_p.y>=0) 
+	  pDC->TextOut(text_p.x, text_p.y, text_str);
+
+	gm->m_pGPSCtrl->DrawNodeInClientWindow(pDC, node_p);
+
+	pDC->SelectObject(old_ft);
+	ft.DeleteObject();
+
+}
+
+
+BOOL CReactionEngine::GetReacNew(T_NODE_K node_key, T_REAC_D* reac_d, T_REAC_D* reac_min,T_REAC_D* reac_abs)
+{
+	I_GPSModel	*gm=(I_GPSModel *) m_pGPSModel;
+	
+	T_SKEW_D  skew_data;
+
+	if(!m_bLocalValue)
+	{
+		return m_pDoc->m_pPostCtrl->GetReacNew(node_key,reac_d,reac_min,reac_abs);
+	}
+	else
+	{
+		if(m_pDoc->m_pAttrCtrl->GetSkew(node_key,skew_data))
+		{
+			m_mapSkew.SetAt(node_key,skew_data);
+			return m_pDoc->m_pPostCtrl->GetLocalReacNew(node_key,reac_d,reac_min,reac_abs);
+		}
+		else
+			return m_pDoc->m_pPostCtrl->GetReacNew(node_key,reac_d,reac_min,reac_abs);
+	}
+	return FALSE;
+}
+
+BOOL CReactionEngine::GetReacNew4SoilPressure(T_NODE_K node_key, T_REAC_D* reac_d, T_REAC_D* reac_min,T_REAC_D* reac_abs, CMapEx<T_BNGR_K, T_BNGR_K, BOOL, BOOL>* pmNsprBndrK)
+{
+	I_GPSModel	*gm=(I_GPSModel *) m_pGPSModel;
+
+	T_SKEW_D  skew_data;
+
+	if(!m_bLocalValue)
+	{
+		return m_pDoc->m_pPostCtrl->GetReacNew4SoilPressure(node_key,reac_d,reac_min,reac_abs,pmNsprBndrK);
+	}
+	else
+	{
+		if(m_pDoc->m_pAttrCtrl->GetSkew(node_key,skew_data))
+		{
+			m_mapSkew.SetAt(node_key,skew_data);
+			return m_pDoc->m_pPostCtrl->GetLocalReacNew4SoilPressure(node_key,reac_d,reac_min,reac_abs,pmNsprBndrK);
+		}
+		else
+			return m_pDoc->m_pPostCtrl->GetReacNew4SoilPressure(node_key,reac_d,reac_min,reac_abs,pmNsprBndrK);
+	}
+	return FALSE;
+}
+
+BOOL CReactionEngine::RotatebyLocalCoord(T_NODE_K node_key,T_NODE_D node_data, C3DPoint &point)
+{
+	T_SKEW_D skew_data;
+	if(!m_mapSkew.Lookup(node_key,skew_data)) return FALSE;
+	
+	C3DPoint point_org;
+	// Node를 중심으로 회전한다.
+	point_org.x = point.x-node_data.x;
+	point_org.y = point.y-node_data.y;
+	point_org.z = point.z-node_data.z;
+	
+	CMathFunc::mathUCS2GCS(point_org.x, point_org.y, point_org.z, skew_data.LocalVector);
+	
+	point.x = point_org.x + node_data.x;
+	point.y = point_org.y + node_data.y;
+	point.z = point_org.z + node_data.z;
+	
+	return TRUE;
+}
+
+
+
+
+
+void CReactionEngine::ResetEngine()
+{
+	CEngineBase::ResetEngine();
+
+	m_ReacAdjustFactor		= 1.0;
+	m_ReacScaleFactor		= 1.0;
+	m_bReacDataSet			= FALSE;
+	m_ReacComponent			= REACTION_COMPONENT_FXYZ;
+
+	m_KeyPickedNode			= 0;
+	m_InflKeyNode			= 1;
+
+	m_bReacInflIclImpFct = FALSE;
+
+	m_bLocalValue = FALSE;
+	m_MaxAxis = m_MinAxis = 0;
+
+	m_mapSkew.RemoveAll();
+	m_NodeKeyList.RemoveAll();
+	m_ReacReverseFg.RemoveAll();  //KYE-HONG-20020204
+	m_ReacDataList.RemoveAll();
+}
+
+
+void CReactionEngine::InitReacInflAdjustFactor(double max_disp)
+{
+	C3DPoint	min_p, max_p;
+	double		max_l;
+	I_GPSModel	*gm=(I_GPSModel *) m_pGPSModel;
+
+	if(m_bLockAdjFactor)
+		return;
+
+//	((I_GPSModel *) m_pGPSModel)->m_pGPSCtrl->GetModelBoundary(min_p, max_p);
+//	m_pDoc->calcRangeModel(min_p.x, min_p.y, min_p.z, max_p.x, max_p.y, max_p.z,
+//															 NULL, NULL, TRUE, NULL, TRUE,
+//															 ((I_GPSModel *) m_pGPSModel)->m_bFrameThick||((I_GPSModel *) m_pGPSModel)->m_bPlaneThick);
+	
+	gm->GetRangeModel(&min_p,&max_p);
+	max_l = max(max(max_p.x-min_p.x, max_p.y-min_p.y), max_p.z-min_p.z);
+	m_dMaxModelLength = max_l;
+
+	if (max_disp > -1e-15 && max_disp < 1e-15)
+		max_disp = 1.0;
+
+	// 가장 큰 변위값이 모델 Range의 1/20의 크기가 되게 한다.
+	m_ReacAdjustFactor = max_l / (fabs(max_disp)*20.0);
+}
+
+/*
+void CReactionEngine::DrawNodeReacValueWindow(CDC *pDC, T_NODE_K nkey)
+{
+	I_GPSModel	*gm=(I_GPSModel *) m_pGPSModel;
+	
+	int			i;
+	T_NODE_D	node_d;
+	T_REAC_D	reac_d;
+	double		arr_len, ln_len, len;
+	CBrush		arr_brush, *old_brush;
+	CPen		arr_pen, ln_pen, *old_pen;
+	C3DPoint PntNode;
+
+	GPS_INTG_ARRY index;
+	CArray<GPS_3DPT_LISTP,GPS_3DPT_LISTP> poly_list;
+
+	arr_brush.CreateSolidBrush(RGB(255, 255, 128));
+	arr_pen.CreatePen(PS_SOLID, 1, RGB(0, 0, 0));
+	ln_pen.CreatePen(PS_SOLID, 1, RGB(0, 255, 0));
+
+	InitReacAdjustFactor();
+
+	if(fabs(m_MaxReacVal) > fabs(m_MinReacVal)) 
+		arr_len = fabs(m_MaxReacVal)*m_ReacAdjustFactor*m_ReacScaleFactor*0.35;
+	else
+		arr_len = fabs(m_MinReacVal)*m_ReacAdjustFactor*m_ReacScaleFactor*0.35;
+	
+	m_pDoc->m_pAttrCtrl->GetNode(nkey, node_d);
+	PntNode.x = node_d.x;
+	PntNode.y = node_d.y;
+	PntNode.z = node_d.z;
+	if(!GetReacData(nkey, reac_d))return;
+
+	switch(m_ReacComponent) 
+	{
+	case REACTION_COMPONENT_FXYZ:
+		for(i=0;i<3;i++) 
+		{
+			len = CalcReacValue(REACTION_COMPONENT_FX+i, reac_d);
+			if(len == 0.0)continue;
+			ln_len = len*m_ReacAdjustFactor*m_ReacScaleFactor*1.2;
+			
+			if(len < 0.0)
+				DoComponentReaction(nkey,node_d, REACTION_COMPONENT_FX+i, -arr_len, ln_len, poly_list);
+			else
+				DoComponentReaction(nkey,node_d, REACTION_COMPONENT_FX+i, arr_len, ln_len, poly_list);
+		}
+		break;
+	case REACTION_COMPONENT_MXYZ:
+		for(i=0;i<3;i++) 
+		{
+			len = CalcReacValue(REACTION_COMPONENT_MX+i, reac_d);
+			if (len == 0.0)
+				continue;
+			ln_len = len*m_ReacAdjustFactor*m_ReacScaleFactor*1.2;
+			if (len < 0.0)
+				DoComponentReaction(nkey,node_d, REACTION_COMPONENT_MX+i, -arr_len, ln_len, poly_list);
+			else
+				DoComponentReaction(nkey,node_d, REACTION_COMPONENT_MX+i, arr_len, ln_len, poly_list);
+		}
+		break;
+	default:
+		len     = CalcReacValue(reac_d);
+		ln_len  = len*m_ReacAdjustFactor*m_ReacScaleFactor*1.2;
+		if (len < 0.0)
+			DoComponentReaction(nkey,node_d, m_ReacComponent, -arr_len, ln_len, poly_list);
+		else
+			DoComponentReaction(nkey,node_d, m_ReacComponent, arr_len, ln_len, poly_list);
+		break;
+	}
+
+	old_brush = (CBrush *) pDC->SelectObject(&arr_brush);
+	old_pen = (CPen *) pDC->SelectObject(&arr_pen);
+
+	index.RemoveAll();
+	gm->m_pGPSCtrl->GetZSortPolygonList(poly_list, index);
+	
+	if(gm->m_bVirtualMode)  gm->m_pGPSCtrl->DrawNodeInClientWindow(pDC, PntNode);
+	else		                gm->m_pGPSCtrl->DrawNode(pDC, PntNode);
+
+	for(i=0;i<index.GetSize();i++) 
+	{
+		if(poly_list[index[i]]->GetCount() == 2) 
+		{
+			pDC->SelectObject(&ln_pen);
+			if(gm->m_bVirtualMode)  gm->m_pGPSCtrl->DrawLine3DOnClientWindow(pDC, poly_list[index[i]]->GetHead(), poly_list[index[i]]->GetTail());
+			else				            gm->m_pGPSCtrl->DrawLine3D(pDC, poly_list[index[i]]->GetHead(), poly_list[index[i]]->GetTail());
+		}
+		else 
+		{
+			pDC->SelectObject(&arr_pen);
+			if(gm->m_bVirtualMode)  gm->m_pGPSCtrl->DrawPolygon3DFillOnClientWindow(pDC, *(poly_list[index[i]]));
+			else				            gm->m_pGPSCtrl->DrawPolygon3DFill(pDC, *(poly_list[index[i]]));
+		}
+	}
+
+	for(i=0;i<poly_list.GetSize();i++) 
+	{
+		poly_list[i]->RemoveAll();
+		delete poly_list[i];
+	}
+	poly_list.RemoveAll();
+	index.RemoveAll();
+
+	pDC->SelectObject(old_pen);
+	pDC->SelectObject(old_brush);
+	arr_brush.DeleteObject();
+	arr_pen.DeleteObject();
+	ln_pen.DeleteObject();
+}
+*/
+
+/*
+BOOL  CReactionEngine::GetMvlTrcReacInterPt(int org_lane,T_ELEM_K org_ekey,int org_pos,
+																						C3DPoint &get_pt1,C3DPoint &get_pt2,BOOL st_fg,BOOL& bForward)
+{
+	I_GPSModel		*gm=(I_GPSModel *) m_pGPSModel;
+	
+	int				  i, j, k, elem_num=m_InflLaneElemKeyList.GetSize(), nDivide;
+	T_ELEM_K		ekey;
+	T_ELEM_D		elem_d;
+	T_NODE_D		node_d[2];
+	int         nLane;
+
+	CArray<double, double>      infl_val;	//KYE-HONG-020129			
+	CArray<T_REAC_D, T_REAC_D&>	reac_d;	  //KYE-HONG-020129			
+	CArray<C3DPoint, C3DPoint&>	node_p,line_p,eccen_p;
+
+	// Mid Point를 찾기위해 serial하게 저장하는 변수들 
+	int   org_idx=-1;  // 하중범위위치를 가리키는 index
+	CArray<int,int>             arPos;
+	CArray<C3DPoint,C3DPoint&>  arNewPt;
+	CArray<double ,double&>     arNewVal;
+
+	if (elem_num <= 0)return TRUE;
+
+	 // 현재 선택된 lane의 정보를 갖고옴 
+	m_pDoc->m_pPostCtrl->GetLaneInfo(m_arLaneInfoNew);	                      //KYE-HONG-020129 
+
+	nLane = -1;
+	k     = 0;
+	int kk=0;
+		
+	for (i=0;i<elem_num;i++) 
+	{
+		ekey = m_InflLaneElemKeyList[i];
+		//nLane = m_arLaneKey[i];
+		// 새로운 lane인경우에는 초기화 
+		if(m_arLaneKey[i]!=nLane)
+		{
+			nLane = m_arLaneKey[i];
+			kk=0;
+		}
+		if(org_lane!=nLane) continue;
+		// 보요소의 divide정보를 가변적으로 수정 
+		nDivide	= m_arLaneInfoNew[nLane].arLaneInfoIlln[kk].nDivide;	
+		line_p.RemoveAll();				
+		node_p.RemoveAll();							
+		infl_val.RemoveAll();      
+		reac_d.RemoveAll();
+		arPos.RemoveAll();
+		eccen_p.RemoveAll();
+
+		line_p.SetSize(nDivide);	
+		node_p.SetSize(nDivide);		
+		infl_val.SetSize(nDivide);	
+		reac_d.SetSize(nDivide);
+		arPos.SetSize(nDivide);
+		eccen_p.SetSize(nDivide);
+		
+		// Lane 상의 지점에서의 변위값
+		//for (j=0;j<5;j++) 
+		for (j=0;j<nDivide;j++)
+		{
+			eccen_p[j].x  = m_arInflReacEccen[0][k];
+			eccen_p[j].y  = m_arInflReacEccen[1][k];
+			eccen_p[j].z  = m_arInflReacEccen[2][k];
+			reac_d[j]    = m_ReacDataList[k++];
+			//eccen_val[j] = m_EccenList[k++];
+			arPos[j]     = m_arLaneInfoNew[nLane].arLaneInfoIlln[kk++].nPosition;	//KYE-HONG-020205
+	  }
+		for(j=0;j<nDivide;j++)  node_p[j] = eccen_p[j];
+	
+		// Lane 상의 지점의 위치
+		m_pDoc->m_pAttrCtrl->GetElem(ekey, elem_d);
+		m_pDoc->m_pAttrCtrl->GetNode(elem_d.elnod[0], node_d[0]);
+		m_pDoc->m_pAttrCtrl->GetNode(elem_d.elnod[1], node_d[1]);
+
+		for(j=0;j<nDivide;j++) 
+		{
+			infl_val[j] = CalcReacValue(reac_d[j]);
+			arNewVal.Add(infl_val[j]);
+			arNewPt.Add(node_p[j]);
+			if(org_pos==arPos[j]&&org_ekey==ekey) org_idx=arNewPt.GetSize()-1;
+		}
+	}
+
+	//---------------------------------------------------------- 
+	// interporation준비가 끝난후.. 보간된 값을 찾아온다 
+	//---------------------------------------------------------- 
+	int lane_num = arNewVal.GetSize();
+
+	int       pre_idx,pst_idx;
+	double    dPreV,dPstV,dSel;
+	C3DPoint  ptPre,ptPst,ptSel,ptMid;
+	
+	pre_idx = org_idx;
+	pst_idx = org_idx;
+
+	if(org_idx==-1)       return FALSE; // 하나도 선택이 되지 않았으면.. 
+	if(org_idx>=lane_num) return FALSE; // idx가 size보다 크면.. 
+	
+	dSel  = arNewVal[org_idx];
+	ptSel = arNewPt[org_idx];
+
+	// 앞쪽 lane의 값을 구함 
+	if(pre_idx!=0)  pre_idx=pre_idx-1;
+	if(arNewVal[pre_idx]==dSel && pre_idx!=0)  pre_idx=pre_idx-1;
+	
+	// 뒤쪽 lane의 값을 구함 
+	if(pst_idx!=lane_num-1) pst_idx=pst_idx+1;
+	if(arNewVal[pst_idx]==dSel && pst_idx!=lane_num-1) pst_idx=pst_idx+1;
+	
+	// 전후 value와 pointer저장 
+	dPreV = arNewVal[pre_idx];
+	dPstV = arNewVal[pst_idx];
+	ptPre = arNewPt[pre_idx];  
+	ptPst = arNewPt[pst_idx];  
+
+	// 현재 선택된값이 변곡점 사이에 있으면.. 
+	// 그냥 선택 
+	if(dSel==0.0) 
+	{
+		// lane시작 
+		if(st_fg){ get_pt1=ptSel; get_pt2=ptPst;}
+		// lane끝 
+		else     { get_pt1=ptPre; get_pt2 = ptSel;}
+		bForward  = FALSE;
+		return TRUE;
+	}
+	MVLTRC_CalMidPt(dPreV,dSel,dPstV,ptPre,ptSel,ptPst,get_pt1,get_pt2,st_fg,bForward);
+	return TRUE;
+}
+*/

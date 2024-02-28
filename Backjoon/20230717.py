@@ -46,7 +46,9 @@ import sys
 
 
 #Problem 2.
-from collections import deque
+import heapq
+
+min_heap = []
 max_v = 300000
 V, E = map(int, sys.stdin.readline().strip().split(' '))
 S = int(sys.stdin.readline().strip())
@@ -65,17 +67,20 @@ for _ in range(E):
 
 result = [max_v for _ in range(V)]
 
-dq = deque()
-dq.append(S)
+
+heapq.heappush(min_heap, (0, S))
 result[S-1] = 0
 
-while dq:
-    temp = dq.popleft()
-    if temp in board:
-        for i in board[temp]:
-            if board[temp][i] + result[temp-1] < result[i-1]:
-                result[i-1] = board[temp][i]+result[temp-1]
-                dq.append(i)
+while min_heap:
+    temp = heapq.heappop(min_heap)
+    v, node = temp[0], temp[1]
+    if v > result[node-1]:
+        continue
+    if node in board:
+        for i in board[node]:
+            if v + board[node][i] < result[i-1]:
+                result[i-1] = v + board[node][i]
+                heapq.heappush(min_heap, (result[i-1], i))
 
 
 

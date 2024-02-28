@@ -1,5 +1,5 @@
 import sys
-from itertools import permutations
+from itertools import combinations
 import copy
 
 N, M, H = map(int, sys.stdin.readline().split())
@@ -38,11 +38,15 @@ for i in range(H):
     for j in range(N-1):
         if ladder[i][j] == 0 and ladder[i][j+1] == 0:
             add_l.append([i,j])
-
+# ## TestCode
+# for i in ladder:
+#     print(i)
+# print()
 for i in range(3):
-    p_l = permutations(add_l, i+1)
-    t_ladder = copy.deepcopy(ladder)
+    p_l = combinations(add_l, i+1)
+
     for k in p_l:
+        t_ladder = copy.deepcopy(ladder)
         for j in k:
             t_ladder[j[0]][j[1]] = 1
             t_ladder[j[0]][j[1]+1] = 2
@@ -54,3 +58,5 @@ print(-1)
 
 
 test = [[1,2,0,1,2], [0,0,1,2,0], [1,2,0,0,0], [0,0,0,0,0], [0,0,0,0,0], [0,0,0,0,0]]
+
+##print(simulation([[1, 2, 0, 1, 2],[0, 0, 1, 2, 0],[1, 2, 0, 0, 0],[0, 0, 1, 2, 0],[0, 1, 2, 1, 2],[0, 1, 2, 0, 0]]))
