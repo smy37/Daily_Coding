@@ -17,3 +17,4 @@ for _ in range(T):
         d_max = max(d_max, board[1][i])
     print(max(u_max, d_max))
 
+    )
