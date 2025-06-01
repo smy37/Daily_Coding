@@ -7,6 +7,7 @@ on:
 
 jobs:
   review:
+    if: contains(github.event.head_commit.message, '!리뷰&')
     runs-on: ubuntu-latest
 
     steps:
