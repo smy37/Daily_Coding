@@ -14,4 +14,4 @@
 선택된 알고리듬 카테고리의 문제를 매일 1개씩 풀이. 관련되어 얻은 인사이트나 지식은 해당 코드 또는 기술 블로그에 상세히 정리.
 
 ### 푼 문제 히스토리 그래프
-![image](https://github.com/user-attachments/assets/cc32d932-8d0d-48cd-9ed3-a5a4458b2ab7)
+<img width="853" alt="solved_graph" src="https://github.com/user-attachments/assets/6ce7290e-b98e-4f9a-9c21-5fae7192861c" />
