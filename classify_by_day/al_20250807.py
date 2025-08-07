@@ -1,22 +1,25 @@
 import sys
 import math
-from math import gcd
 
-div, mul = map(int, sys.stdin.readline().split())
+X, Y = map(int, sys.stdin.readline().split())
+diff = Y-X
+s_diff = math.sqrt(diff)
+if diff == 0:
+    print(0)
+else:
+    if s_diff%1 == 0:
+        print(2*int(s_diff)-1)
+    else:
+        duplicate = diff - int(s_diff)**2
 
-cri = mul//div
-
-for i in range(int(math.sqrt(cri)), 0, -1):
-    if cri %i == 0:
-        j = cri // i
-        if gcd(i, j) == 1:
-            print(i*div, j*div)
-            sys.exit()
+        if duplicate <= s_diff:
+            print(2*int(s_diff))
+        else:
+            print(2*int(s_diff)+1)
 
 
 explain = """
-최소공배수를 최대공약수로 나눈 수를 소인수분해 했을 때, 소인수분해 한 것을 수 2개로 분배했을 때, 
-이 2개의 수는 서로 약수가 생기면 안된다. 왜냐하면 이미 최대공약수를 구했고 약수가 생기면 최대공약수에 이 약수를 
-곱한 수가 공약수가 되는 것이므로 모순이 생긴다. 따라서 분배된 2개의 수가 서로 약수가 생기지 않고(gcd = 1) 중앙에 있는
-수부터 이 수를 찾아 가는 로직으로 풀이 가능하다.
-"""
+처음과 시작이 1이어야 한다는 조건 때문에 계단식으로 올랐다가 내려오는 구간이 반드시 존재해야 한다. 
+이 구간에 대해서 총합은 n^2이므로 루트를 씌워 n을 구할 수 있다. 이때, n^2 + 2*n 까지 최대 2번을 반복해서 만들 수 있다. 
+(만약 n^2+2*n +1 이 된다면 루트를 씌운 값이 n+1 이상이 된다) 또한 n이 계단의 최상이므로 n이하일 때는 1번을 더 해서 만들 수 있다.  
+""" 
