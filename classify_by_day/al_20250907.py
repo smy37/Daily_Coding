@@ -1,44 +1,34 @@
-import sys 
-import math
-from collections import deque
+import sys
+from itertools import permutations
 
-K = int(sys.stdin.readline())
+N = int(sys.stdin.readline())
+flag = False
+if N > 184010 or N < 38210:
+    print("No Answer")
+    sys.exit()
+for iter in permutations(range(10), 7):
+    h, w, e, o, l, r, d = iter
+    if h==0 or w == 0:
+        continue
 
-### 1. First Approach
-# dq = deque()
-# dq.append([K, 0])
+    if (o+d)%10 != N%10:
+        continue
+    num1 = (h)*10000 + (e)*1000 + (l)*100 + (l)*10 + o
+    num2 = (w)*10000 + (o)*1000 + (r)*100 + (l)*10 + d
+    cri = num1+num2
 
-# max_scar = 0
-# while dq:
-#     k, scar_cnt = dq.popleft()
-    
-#     max_scar = max(max_scar, scar_cnt)
-#     for i in range(int(math.sqrt(k)), 1, -1):
-#         if k % i == 0:
-#             dq.append([i, scar_cnt+1])
-#             dq.append([k//i, scar_cnt+1])
-#             break
-# print(max_scar)
+    if cri == N:
+        print(" ", num1)
+        print("+", num2)
+        print("-------")
+        print(" "*(6-len(str(cri))), cri)
+        flag = True
+        break
 
-### 2. Second Approach
-n = K
-d = 2
-r = 0
-
-while d*d <= n:
-    if n%d == 0:
-        r += 1
-        n = n//d
-    else:
-        d += 1
-
-if n > 1:
-    r += 1
-
-print(math.ceil(math.log2(r)))
+if not flag:
+    print("No Answer")
 
 explain = """
-처음에는 가장 큰 약수로 나눠가는 접근을 취했지만 40과 같은 경우에는 원래는 depth 2번만에 분할이 가능한데
-해당 로직으로는 3번에 가능했다. 
-두번째 로직은 소인수분해를 하고 인수의 개수에 log2를 씌우고 올림한 것이 총 분할하는데 걸리는 횟수가 된다.
+0부터 9까지의 수를 10p7 의 경우의 수를 구한 다음에 조건을 만족하는지 체크해준다. 
+마지막 수의경우 공백이 합에 따라 달라지므로 그부분을 유의한다.
 """
