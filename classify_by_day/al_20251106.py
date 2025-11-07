@@ -1,5 +1,4 @@
 import sys
-import copy
 
 N = int(sys.stdin.readline())
 
@@ -48,7 +47,7 @@ N = int(sys.stdin.readline())
 ### 2. Second Approach
 weight_l = {}
 dura_l = []
-visit = {i: 0 for i in range(N)}
+visit = [0]*N
 for i in range(N):
     dura, weight = map(int, sys.stdin.readline().split())
     weight_l[i] = weight
@@ -58,15 +57,16 @@ answer = 0
 def dfs(e_l, v):
     global answer
     for i in range(N):
-        
         if e_l[i] > 0 and v[i] == 0:
             v[i] = 1
-            for j in range(i+1, N):
-                if e_l[j] > 0:
-                    t_e_l = copy.deepcopy(e_l)
+            for j in range(N):
+                if e_l[j] > 0 and i != j:
+                    t_e_l = e_l[:]
                     t_e_l[i] -= weight_l[j]
                     t_e_l[j] -= weight_l[i]
-                    dfs(t_e_l, v)
+                    n_v = v[:]
+                    dfs(t_e_l, n_v)
+            break
     cnt = 0
     
     for d in e_l:
@@ -75,3 +75,9 @@ def dfs(e_l, v):
     answer = max(answer, cnt)
 dfs(dura_l, visit)
 print(answer)
+
+
+explain = """
+DFS와 백트래킹을 조합한다면 완전 탐색이 가능하다. 일반적인 DFS와는 달리 백트래킹이 조합되면
+경로가 달라질 경우 다른 케이스로 본다. 그리고 copy.deepcopy 보다는 [:] 슬라이스를 통해 복사하는게 더 빠르다.
+"""
