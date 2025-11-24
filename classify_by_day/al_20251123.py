@@ -18,18 +18,15 @@ class Solution:
                         ans = s[start:end + 1]
                 else:
                     if s[start] == s[end]:
-
                         s_idx = start+1
                         e_idx = end-1
-                        while s_idx <= e_idx:
+                        if s_idx <= e_idx:
                             if dp[s_idx][e_idx] == True:
                                 dp[start][end] = True
                                 if max_length < end-start:
                                     max_length = end-start
                                     ans = s[start:end+1]
-                            s_idx +=1
-                            e_idx -=1
-        print(ans)
+
         return ans
 
 
@@ -38,6 +35,12 @@ class Solution:
 
 
 if __name__ == "__main__":
-    test_case = "cbbd"
+    test_case = "abbcccba"
     sol = Solution()
     sol.longestPalindrome(test_case)
+    explain = """
+    Using the principle of dynamic programming, a bottom-up approach is the essential concept of this problem.
+    If the start of the string is equal to the end of the string, 
+    and the substring between them is a palindrome, 
+    then this string is also a palindrome.
+    """
