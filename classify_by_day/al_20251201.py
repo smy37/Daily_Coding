@@ -1,34 +1,44 @@
 from typing import List
-from collections import deque
+
+def dfs(stack, path, visit, graph):
+    cur = stack.pop()
+    ans = True
+    for next_node in graph[cur]:
+        if next_node in path:
+            return False
+        if next_node not in visit:
+            visit[next_node] = True
+            path[next_node] = True
+            ans = dfs(stack + [next_node], path, visit, graph)
+            del path[next_node]
+            if not ans:
+                break
+    return ans
 
 class Solution:
     def canFinish(self, numCourses: int, prerequisites: List[List[int]]) -> bool:
-        graph = {i:{} for i in range(numCourses)}
         visit = {}
-        dq = deque()
+        graph = {}
+        for i in range(numCourses):
+            graph[i] = {}
+
         for after, pre in prerequisites:
             graph[after][pre] = True
-            if after in graph[pre]:
-                return False
 
         for num in graph:
             if num not in visit:
-                visit[num] = True
-                dq.append(num)
+                answer = dfs([num], {num: True}, visit, graph)
 
-                while dq:
-                    cur = dq.popleft()
-
-                    for next_num in graph[cur]:
-                        if next_num not in visit:
-                            visit[next_num] = True
-                            dq.append(next_num)
-
-        if len(visit) == numCourses or len(prerequisites) == 0:
-            return True
-        else:
-            return False
+                if not answer:
+                    return False
+        return True
 
 if __name__ == "__main__":
     solution = Solution()
-    print(solution.canFinish(3, [[1,0],[0,2],[2,1]]))
+    print(solution.canFinish(4,[[0,1],[3,1],[1,3],[3,2]]))
+
+    explain = """
+    To determine whether a cycle exists in a graph, we can use either a disjoint set or a DFS algorithm. 
+    It is important to consider whether the graph is directed or undirected, because the way we detect cycles depends on this.
+    In directed graphs, visited memory is used for pruning, and path memory is used to detect cycles.
+    """
