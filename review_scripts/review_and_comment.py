@@ -39,7 +39,7 @@ def ask_llm(diff_text):
     prompt = review_prompt+f"\n\n{diff_text[:7000]}"
 
     response = openai.beta.chat.completions.parse(
-        model="gpt-4.1",
+        model="gpt-5.2",
         messages=[
             {"role": "developer", "content": "You are a professional code reviewer."},
             {"role": "user", "content": prompt}
