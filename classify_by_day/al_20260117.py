@@ -1,5 +1,6 @@
 from typing import Optional, List
 
+
 # Definition for a binary tree node.
 class TreeNode:
     def __init__(self, val=0, left=None, right=None):
@@ -17,11 +18,18 @@ class Solution:
             memory[level].append(node.val)
 
             if node.left:
-                search(node.left, level+1)
+                search(node.left, level + 1)
             if node.right:
-                search(node.right, level+1)
+                search(node.right, level + 1)
 
-        print(memory)
+        if root:
+            search(root, 0)
+        answer = []
+        for k in memory:
+            answer.append(memory[k][-1])
+
+        return answer
+
 
 explain = """
 Traverse the binary tree using DFS, then find the rightmost node at each level.
