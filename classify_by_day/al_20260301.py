@@ -29,4 +29,3 @@ class Solution:
                 cur_max = nums[i]
             cur += 1
         return answer
-    
