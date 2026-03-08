@@ -1,29 +1,19 @@
-import sys
-from collections import deque
+from typing import List
 
-s, t = map(int, sys.stdin.readline().split())
+class Solution:
+    def beautifulArray(self, n: int) -> List[int]:
+        if n == 1:
+            return [1]
 
-if s == t:
-    print(0)
-    sys.exit()
+        left = self.beautifulArray((n+1) // 2)
+        for i in range(len(left)):
+            left[i] = 2 * left[i] - 1
 
-cal_list = ["*", "+", "-", "/"]
-cal_list.sort()
+        right = self.beautifulArray(n // 2)
+        for i in range(left(right)):
+            right[i] = 2 * left[i]
 
-dq = deque()
-dq.append([s, ""])
-visited = {s:1}
+        return left + right
 
-while dq:
-    cur_s, accumul_cal = dq.popleft()
-
-    for cal in cal_list:
-        next_value = int(eval(f"{cur_s}{cal}{cur_s}"))
-        if next_value == t:
-            print(accumul_cal+cal)
-            sys.exit()
-        if next_value not in visited:
-            visited[next_value] = 1
-            if next_value != 0 and next_value <= t:
-                dq.append([next_value, accumul_cal+cal])
-print(-1)
+sol = Solution()
+sol.beautifulArray(4)
