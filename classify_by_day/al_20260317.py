@@ -1,5 +1,6 @@
 from typing import List
 import heapq
+from collections import deque
 
 class Solution:
     ## First Approach. (Too slow)
@@ -52,9 +53,8 @@ class Solution:
     #     return answer
 
     ## Third Approach (Using deque)
-        from collections import deque
-        answer = []
 
+        answer = []
         dq = deque()
         for idx, n in enumerate(nums):
             while dq and nums[dq[-1]] < n:
