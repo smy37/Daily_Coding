@@ -51,7 +51,6 @@ class Solution:
         while small_left <= small_right:
             mid = (small_left + small_right) // 2
             mid_big = half - (mid + 1)
-            print(half, mid, mid_big, small, big)
             if small[mid] > big[mid_big]:
                 if mid_big + 1 < len(big) and big[mid_big + 1] < small[mid]:
                     small_right = mid - 1
@@ -76,10 +75,20 @@ class Solution:
                         return big[mid_big]
             else:
                 return small[mid]
-        if small_right <0:
-            return big[half]
+        if small_right < 0:
+            if (len(nums1) + len(nums2)) % 2 == 0:
+                return (big[half] + big[half - 1]) / 2
+            else:
+                return big[half]
         else:
-            return big[half-len(small)]
+            cri = half - len(small)
+            if (len(nums1) + len(nums2)) % 2 == 0:
+                if cri == 0:
+                    return (big[cri] + small[-1]) / 2
+                else:
+                    return (big[cri] + big[cri - 1]) / 2
+            else:
+                return big[cri]
 
 
 
