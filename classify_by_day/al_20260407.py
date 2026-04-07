@@ -58,7 +58,6 @@ for n in num_list:
             one_l.append(1)
         else:
             positive_l.append(n)
-
     else:
         negative_l.append(n)
 
@@ -67,7 +66,6 @@ for i in range(0, len(negative_l)-1, 2):
 
 if len(negative_l)%2 !=0:
     answer += negative_l[-1]
-
 
 for i in range(len(positive_l)-1, 0, -2):
     answer += positive_l[i]*positive_l[i-1]
