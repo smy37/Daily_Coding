@@ -21,6 +21,4 @@ for s, e in num_list:
     heapq.heappush(memory, e)
     answer = max(answer, len(memory))
 
-
-
 print(answer)
