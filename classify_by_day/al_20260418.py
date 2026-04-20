@@ -19,3 +19,6 @@ if __name__ == "__main__":
     test_case = -123
     sol = Solution()
     print(sol.reverse(test_case))
+
+    explain = """32-bit int's range is [-2**31, 2**31-1] since number of this range is (2**31-1-(-2**31)+1) = 2**32.
+    """
